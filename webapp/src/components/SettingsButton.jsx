@@ -14,7 +14,7 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20">
+        <div className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20 max-h-[70vh] overflow-y-auto">
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
           <div className="space-y-3">
@@ -83,6 +83,36 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
                   type="checkbox"
                   checked={settings.showViewCones}
                   onChange={(e) => onSettingsChange({ ...settings, showViewCones: e.target.checked })}
+                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
+                <span className="text-radar-secondary text-sm">💨 Smoke</span>
+                <input
+                  type="checkbox"
+                  checked={settings.showSmoke}
+                  onChange={(e) => onSettingsChange({ ...settings, showSmoke: e.target.checked })}
+                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
+                <span className="text-radar-secondary text-sm">🔥 Molly</span>
+                <input
+                  type="checkbox"
+                  checked={settings.showMolly}
+                  onChange={(e) => onSettingsChange({ ...settings, showMolly: e.target.checked })}
+                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
+                <span className="text-radar-secondary text-sm">⚡ Flash</span>
+                <input
+                  type="checkbox"
+                  checked={settings.showFlash}
+                  onChange={(e) => onSettingsChange({ ...settings, showFlash: e.target.checked })}
                   className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
                 />
               </label>

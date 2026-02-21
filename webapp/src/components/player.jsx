@@ -27,7 +27,7 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   const radarImageBounding = (radarImage !== undefined &&
     radarImage.getBoundingClientRect()) || { width: 0, height: 0 };
 
-  const scaledSize = 0.7 * settings.dotSize;
+  const scaledSize = 1.0 * settings.dotSize;
 
   // Store the last known position when the player dies
   useEffect(() => {
@@ -84,9 +84,10 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
         <div
           className={`w-full h-full rounded-[50%_50%_50%_0%] rotate-[315deg]`}
           style={{
-
-            backgroundColor: `${(playerData.m_team == localTeam && playerColors[playerData.m_color]) || `red`}`,
+            backgroundColor: playerData.m_team == localTeam ? `#4ade80` : `#ef4444`,
             opacity: `${(playerData.m_is_dead && `0.8`) || (invalidPosition && `0`) || `1`}`,
+            border: playerData.m_team == localTeam ? `2px solid #22c55e` : `2px solid #dc2626`,
+            filter: `drop-shadow(0 0 4px ${playerData.m_team == localTeam ? `#4ade80` : `#ef4444`})`,
           }}
         />
 

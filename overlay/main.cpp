@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <wrl.h>
-#include <wil/com.h>
 #include "WebView2.h"
 #include <winhttp.h>
 #include <string>
@@ -17,18 +16,27 @@ using namespace Microsoft::WRL;
 #define RADAR_URL       L"http://localhost:5173"
 #define OVERLAY_W       300
 #define OVERLAY_H       300
-#define HOTKEY_TOGGLE   VK_F9   // F9 = show/hide
-#define HOTKEY_MOVE     VK_F8   // F8 = toggle draggable
-#define POLL_INTERVAL   2000    // ms between Vite readiness checks
+#define HOTKEY_OPACITY_DN VK_F6  // F6 = decrease opacity
+#define HOTKEY_OPACITY_UP VK_F7  // F7 = increase opacity
+#define HOTKEY_MOVE      VK_F8   // F8 = toggle draggable
+#define HOTKEY_TOGGLE    VK_F9   // F9 = show/hide
+#define HOTKEY_EXIT      VK_F10  // F10 = exit overlay
+#define POLL_INTERVAL    2000    // ms between Vite readiness checks
+#define TOPMOST_INTERVAL 500    // ms between topmost re-assertions
+#define TOPMOST_TIMER_ID 101
+#define OPACITY_STEP     0.10f   // 10% per keypress
+#define OPACITY_MIN      0.20f   // minimum 20%
+#define OPACITY_MAX      1.00f   // maximum 100%
 
 static HWND               g_hwnd       = nullptr;
 static bool               g_dragging   = false;
 static POINT              g_dragStart  = {};
 static bool               g_visible    = true;
 static HANDLE             g_viteProcess = nullptr;
+static float              g_opacity    = 1.0f;  // current overlay opacity
 
-wil::com_ptr<ICoreWebView2Controller> g_controller;
-wil::com_ptr<ICoreWebView2>           g_webview;
+ComPtr<ICoreWebView2Controller> g_controller;
+ComPtr<ICoreWebView2>           g_webview;
 
 // ── Forward declarations ─────────────────────────────────────
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -36,6 +44,8 @@ void InitWebView(HWND hwnd);
 bool IsViteReady();
 void LaunchStartBat();
 bool IsWebView2RuntimeInstalled();
+void ApplyOpacity();
+void ToggleDragMode();
 
 // ── Check if WebView2 runtime is installed ───────────────────
 bool IsWebView2RuntimeInstalled()
@@ -48,6 +58,16 @@ bool IsWebView2RuntimeInstalled()
         return true;
     }
     return false;
+}
+
+// ── Apply opacity to the WebView2 page content ───────────────
+void ApplyOpacity()
+{
+    if (!g_webview.Get()) return;
+
+    wchar_t script[128];
+    swprintf_s(script, L"document.documentElement.style.opacity = '%0.2f';", g_opacity);
+    g_webview->ExecuteScript(script, nullptr);
 }
 
 // ── Poll localhost:5173 to check if Vite is ready ────────────
@@ -162,21 +182,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         else if (wp == 2) // F8 toggle drag mode
         {
-            g_dragging = !g_dragging;
-
-            // When drag mode is active, remove WS_EX_TRANSPARENT so we can receive clicks
-            LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-            if (g_dragging)
-                exStyle &= ~WS_EX_TRANSPARENT;
-            else
-                exStyle |= WS_EX_TRANSPARENT;
-
-            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-
-            // Make window semi-opaque when draggable to give visual feedback
-            SetLayeredWindowAttributes(hwnd, 0,
-                g_dragging ? 220 : 255,
-                LWA_ALPHA);
+            ToggleDragMode();
+        }
+        else if (wp == 3) // F6 decrease opacity
+        {
+            g_opacity -= OPACITY_STEP;
+            if (g_opacity < OPACITY_MIN) g_opacity = OPACITY_MIN;
+            ApplyOpacity();
+        }
+        else if (wp == 4) // F7 increase opacity
+        {
+            g_opacity += OPACITY_STEP;
+            if (g_opacity > OPACITY_MAX) g_opacity = OPACITY_MAX;
+            ApplyOpacity();
+        }
+        else if (wp == 5) // F10 exit
+        {
+            DestroyWindow(hwnd);
         }
         break;
 
@@ -209,7 +231,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
 
     case WM_SIZE:
-        if (g_controller)
+        if (g_controller.Get())
         {
             RECT bounds;
             GetClientRect(hwnd, &bounds);
@@ -226,8 +248,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         PostQuitMessage(0);
         break;
+
+    case WM_NCHITTEST:
+        // Click-through: return HTTRANSPARENT when not in drag mode
+        // This is needed because WS_EX_TRANSPARENT alone doesn't provide
+        // click-through with WS_EX_NOREDIRECTIONBITMAP
+        if (!g_dragging)
+            return HTTRANSPARENT;
+        return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
+}
+
+// ── Toggle drag/reposition mode ──────────────────────────────
+void ToggleDragMode()
+{
+    g_dragging = !g_dragging;
+
+    LONG_PTR exStyle = GetWindowLongPtr(g_hwnd, GWL_EXSTYLE);
+    LONG_PTR style = GetWindowLongPtr(g_hwnd, GWL_STYLE);
+    if (g_dragging)
+    {
+        exStyle &= ~WS_EX_TRANSPARENT;
+        style |= WS_THICKFRAME;
+    }
+    else
+    {
+        exStyle |= WS_EX_TRANSPARENT;
+        style &= ~WS_THICKFRAME;
+    }
+    SetWindowLongPtr(g_hwnd, GWL_EXSTYLE, exStyle);
+    SetWindowLongPtr(g_hwnd, GWL_STYLE, style);
+
+    // Enable/disable WebView2 child windows for click-through
+    HWND child = GetWindow(g_hwnd, GW_CHILD);
+    while (child)
+    {
+        EnableWindow(child, g_dragging ? TRUE : FALSE);
+        child = GetWindow(child, GW_HWNDNEXT);
+    }
+
+    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
 // ── WebView2 init ─────────────────────────────────────────────
@@ -246,15 +308,15 @@ void InitWebView(HWND hwnd)
             g_controller->get_CoreWebView2(&g_webview);
 
             // ── Make background transparent ──────────────────
-            auto ctrl2 = g_controller.try_query<ICoreWebView2Controller2>();
-            if (ctrl2)
+            ComPtr<ICoreWebView2Controller2> ctrl2;
+            if (SUCCEEDED(g_controller.As(&ctrl2)) && ctrl2)
             {
                 COREWEBVIEW2_COLOR col = { 0, 0, 0, 0 }; // fully transparent
                 ctrl2->put_DefaultBackgroundColor(col);
             }
 
             // ── Disable browser chrome / context menus ───────
-            wil::com_ptr<ICoreWebView2Settings> settings;
+            ComPtr<ICoreWebView2Settings> settings;
             g_webview->get_Settings(&settings);
             settings->put_AreDefaultContextMenusEnabled(FALSE);
             settings->put_AreDevToolsEnabled(FALSE);
@@ -269,6 +331,24 @@ void InitWebView(HWND hwnd)
             // ── Navigate to the radar URL ────────────────────
             g_webview->Navigate(RADAR_URL);
 
+            // ── Listen for messages from the webapp ──────────
+            EventRegistrationToken token;
+            g_webview->add_WebMessageReceived(
+                Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                    [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                LPWSTR msg = nullptr;
+                args->TryGetWebMessageAsString(&msg);
+                if (msg)
+                {
+                    if (wcscmp(msg, L"toggle-drag") == 0)
+                    {
+                        ToggleDragMode();
+                    }
+                    CoTaskMemFree(msg);
+                }
+                return S_OK;
+            }).Get(), &token);
+
             return S_OK;
         }).Get());
         return S_OK;
@@ -282,6 +362,21 @@ void CALLBACK VitePollTimerProc(HWND hwnd, UINT, UINT_PTR timerId, DWORD)
     {
         KillTimer(hwnd, timerId);
         InitWebView(hwnd);
+    }
+}
+
+// ── Topmost re-assertion timer ────────────────────────────────
+// Games (including CS2 in borderless windowed) can demote HWND_TOPMOST.
+// This timer periodically re-asserts the overlay's z-order, similar to
+// how Discord Overlay and GeForce Experience maintain their position.
+// NOTE: This does NOT work with true exclusive fullscreen — CS2 must
+//       be set to "Fullscreen Windowed" in video settings.
+void CALLBACK TopmostTimerProc(HWND hwnd, UINT, UINT_PTR, DWORD)
+{
+    if (g_visible)
+    {
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
     }
 }
 
@@ -311,25 +406,24 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int)
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     RegisterClassExW(&wc);
 
-    // Create layered, transparent, topmost window — no taskbar entry
+    // Create transparent, topmost, click-through window — no taskbar entry
+    // WS_EX_NOREDIRECTIONBITMAP lets WebView2's DirectComposition render 
+    // properly (WS_EX_LAYERED breaks WebView2 dynamic content)
     g_hwnd = CreateWindowExW(
-        WS_EX_TOPMOST     |    // always on top
-        WS_EX_LAYERED     |    // enables per-pixel alpha
-        WS_EX_TRANSPARENT |    // click-through by default
-        WS_EX_TOOLWINDOW  |    // no taskbar button
-        WS_EX_NOACTIVATE,      // never steals focus from CS2
+        WS_EX_TOPMOST              |  // always on top
+        WS_EX_NOREDIRECTIONBITMAP  |  // proper DirectComposition transparency
+        WS_EX_TRANSPARENT          |  // click-through by default
+        WS_EX_TOOLWINDOW           |  // no taskbar button
+        WS_EX_NOACTIVATE,             // never steals focus from CS2
         L"CS2RadarOverlay",
         L"CS2 Radar",
-        WS_POPUP,               // no border, no title bar
-        20, 20,                  // initial position: top-left
+        WS_POPUP,                      // no border, no title bar
+        20, 100,                       // initial position: top-left, moved down
         OVERLAY_W, OVERLAY_H,
         nullptr, nullptr, hInst, nullptr);
 
-    // Set full opacity (WebView2 handles its own transparency)
-    SetLayeredWindowAttributes(g_hwnd, 0, 255, LWA_ALPHA);
-
     // Assert topmost position
-    SetWindowPos(g_hwnd, HWND_TOPMOST, 20, 20,
+    SetWindowPos(g_hwnd, HWND_TOPMOST, 20, 100,
         OVERLAY_W, OVERLAY_H,
         SWP_SHOWWINDOW | SWP_NOACTIVATE);
 
@@ -337,8 +431,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int)
     UpdateWindow(g_hwnd);
 
     // Register global hotkeys (work even when CS2 has focus)
-    RegisterHotKey(g_hwnd, 1, 0, HOTKEY_TOGGLE); // F9
-    RegisterHotKey(g_hwnd, 2, 0, HOTKEY_MOVE);   // F8
+    RegisterHotKey(g_hwnd, 1, 0, HOTKEY_TOGGLE);    // F9
+    RegisterHotKey(g_hwnd, 2, 0, HOTKEY_MOVE);      // F8
+    RegisterHotKey(g_hwnd, 3, 0, HOTKEY_OPACITY_DN); // F6
+    RegisterHotKey(g_hwnd, 4, 0, HOTKEY_OPACITY_UP); // F7
+    RegisterHotKey(g_hwnd, 5, 0, HOTKEY_EXIT);       // F10
+
+    // Periodically re-assert topmost so we stay above the game window
+    SetTimer(g_hwnd, TOPMOST_TIMER_ID, TOPMOST_INTERVAL, TopmostTimerProc);
 
     // Launch start.bat (Vite dev server)
     LaunchStartBat();
@@ -364,6 +464,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int)
 
     UnregisterHotKey(g_hwnd, 1);
     UnregisterHotKey(g_hwnd, 2);
+    UnregisterHotKey(g_hwnd, 3);
+    UnregisterHotKey(g_hwnd, 4);
+    UnregisterHotKey(g_hwnd, 5);
 
     CoUninitialize();
     return 0;

@@ -28,11 +28,19 @@ const GRENADE_CONFIG = {
   },
 };
 
-const GrenadeLayer = ({ grenades, mapData, radarImage }) => {
+const GrenadeLayer = ({ grenades, mapData, radarImage, settings }) => {
   if (!grenades || !mapData || !radarImage) return null;
 
   const radarImageBounding =
     radarImage.getBoundingClientRect?.() || { width: 0, height: 0 };
+
+  // Filter grenades based on settings toggles
+  const filteredGrenades = grenades.filter((g) => {
+    if (g.type === "smoke" && settings && !settings.showSmoke) return false;
+    if (g.type === "molly" && settings && !settings.showMolly) return false;
+    if (g.type === "flash" && settings && !settings.showFlash) return false;
+    return true;
+  });
 
   return (
     <>
@@ -44,7 +52,7 @@ const GrenadeLayer = ({ grenades, mapData, radarImage }) => {
         }
       `}</style>
 
-      {grenades.map((g, idx) => {
+      {filteredGrenades.map((g, idx) => {
         const cfg = GRENADE_CONFIG[g.type];
         if (!cfg) return null;
 

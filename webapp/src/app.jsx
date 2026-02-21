@@ -23,6 +23,9 @@ const DEFAULT_SETTINGS = {
   showAllNames: false,
   showEnemyNames: true,
   showViewCones: false,
+  showSmoke: true,
+  showMolly: true,
+  showFlash: true,
 };
 
 const loadSettings = () => {
