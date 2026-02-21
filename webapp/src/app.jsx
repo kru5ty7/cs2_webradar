@@ -36,6 +36,7 @@ const App = () => {
   const [mapData, setMapData] = useState();
   const [localTeam, setLocalTeam] = useState();
   const [bombData, setBombData] = useState();
+  const [grenades, setGrenades] = useState([]);
   const [settings, setSettings] = useState(loadSettings());
   const [bannerOpened, setBannerOpened] = useState(true)
 
@@ -103,6 +104,7 @@ const App = () => {
         setPlayerArray(parsedData.m_players);
         setLocalTeam(parsedData.m_local_team);
         setBombData(parsedData.m_bomb);
+        setGrenades(parsedData.m_grenades || []);
 
         const map = parsedData.m_map;
         if (map !== "invalid") {
@@ -125,7 +127,7 @@ const App = () => {
         backdropFilter: `blur(7.5px)`,
       }}
     >
-      {bannerOpened && (
+      {/* {bannerOpened && (
         <section className="w-full flex items-center justify-between p-2 bg-radar-primary">
           <span className="w-full text-center text-[#1E3A54]">
             <span className="font-medium">€4.99</span> -
@@ -138,7 +140,7 @@ const App = () => {
             </svg>
           </button>
         </section>
-      )}
+      )} */}
       <div className={`w-full h-full flex flex-col justify-center overflow-hidden relative`}>
         {bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused && (
           <div className={`absolute left-1/2 top-2 flex-col items-center gap-1 z-50`}>
@@ -190,6 +192,7 @@ const App = () => {
               localTeam={localTeam}
               averageLatency={averageLatency}
               bombData={bombData}
+              grenades={grenades}
               settings={settings}
             />
           )) || (

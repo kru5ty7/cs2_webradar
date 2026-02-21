@@ -10,6 +10,7 @@ void f::run()
 	m_player_data = nlohmann::json{};
 
 	m_data["m_local_team"] = local_team;
+	m_data["m_grenades"] = nlohmann::json::array();
 
 	get_map();
 	get_player_info();
@@ -77,6 +78,14 @@ void f::get_player_info()
 		{
 			const auto planted_c4 = reinterpret_cast<c_planted_c4*>(entity);
 			f::bomb::get_planted_bomb(planted_c4);
+		}
+		else if (hashed_class_name == fnv1a::hash("C_SmokeGrenadeProjectile") ||
+		         hashed_class_name == fnv1a::hash("C_MolotovProjectile") ||
+		         hashed_class_name == fnv1a::hash("C_Inferno") ||
+		         hashed_class_name == fnv1a::hash("C_HEGrenadeProjectile") ||
+		         hashed_class_name == fnv1a::hash("C_Flashbang"))
+		{
+			f::grenades::get_data(entity, class_name);
 		}
 	}
 }

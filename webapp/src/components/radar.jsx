@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import Player from "./player";
 import Bomb from "./bomb";
+import GrenadeLayer from "./GrenadeLayer";
 
 const Radar = ({
   playerArray,
@@ -9,6 +10,7 @@ const Radar = ({
   localTeam,
   averageLatency,
   bombData,
+  grenades,
   settings
 }) => {
   const radarImageRef = useRef();
@@ -39,6 +41,12 @@ const Radar = ({
           settings={settings}
         />
       )}
+
+      <GrenadeLayer
+        grenades={grenades}
+        mapData={mapData}
+        radarImage={radarImageRef.current}
+      />
     </div>
   );
 };
