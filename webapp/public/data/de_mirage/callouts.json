@@ -1,0 +1,20 @@
+{
+  "map": "de_mirage",
+  "callouts": [
+    {"name": "T Spawn",      "x": 0.10, "y": 0.80},
+    {"name": "Mid",          "x": 0.38, "y": 0.52},
+    {"name": "Top Mid",      "x": 0.38, "y": 0.42},
+    {"name": "Window",       "x": 0.44, "y": 0.38},
+    {"name": "A Ramp",       "x": 0.22, "y": 0.35},
+    {"name": "Palace",       "x": 0.15, "y": 0.28},
+    {"name": "A Site",       "x": 0.52, "y": 0.28},
+    {"name": "CT Spawn",     "x": 0.65, "y": 0.48},
+    {"name": "Short",        "x": 0.55, "y": 0.38},
+    {"name": "Jungle",       "x": 0.60, "y": 0.30},
+    {"name": "B Apartments", "x": 0.12, "y": 0.65},
+    {"name": "B Short",      "x": 0.28, "y": 0.68},
+    {"name": "B Site",       "x": 0.42, "y": 0.72},
+    {"name": "Van",          "x": 0.48, "y": 0.78},
+    {"name": "Ticket Booth", "x": 0.55, "y": 0.68}
+  ]
+}

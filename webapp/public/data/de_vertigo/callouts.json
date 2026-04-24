@@ -1,0 +1,15 @@
+{
+  "map": "de_vertigo",
+  "callouts": [
+    {"name": "T Spawn",   "x": 0.12, "y": 0.78},
+    {"name": "T Ramp",    "x": 0.22, "y": 0.58},
+    {"name": "Mid",       "x": 0.40, "y": 0.50},
+    {"name": "A Site",    "x": 0.55, "y": 0.30},
+    {"name": "A Ramp",    "x": 0.45, "y": 0.22},
+    {"name": "CT Spawn",  "x": 0.72, "y": 0.42},
+    {"name": "B Site",    "x": 0.62, "y": 0.70},
+    {"name": "Scaffold",  "x": 0.35, "y": 0.68},
+    {"name": "Elevator",  "x": 0.30, "y": 0.40},
+    {"name": "Catwalk",   "x": 0.50, "y": 0.55}
+  ]
+}

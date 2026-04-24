@@ -1,0 +1,17 @@
+{
+  "map": "de_nuke",
+  "callouts": [
+    {"name": "T Spawn",    "x": 0.10, "y": 0.55},
+    {"name": "Lobby",      "x": 0.22, "y": 0.45},
+    {"name": "Ramp",       "x": 0.30, "y": 0.38},
+    {"name": "Upper A",    "x": 0.52, "y": 0.30},
+    {"name": "Heaven",     "x": 0.58, "y": 0.22},
+    {"name": "CT Spawn",   "x": 0.70, "y": 0.40},
+    {"name": "Hut",        "x": 0.72, "y": 0.55},
+    {"name": "Silo",       "x": 0.20, "y": 0.28},
+    {"name": "Outside",    "x": 0.18, "y": 0.65},
+    {"name": "Lower B",    "x": 0.52, "y": 0.68},
+    {"name": "Squeaky",    "x": 0.40, "y": 0.50},
+    {"name": "Tunnels",    "x": 0.35, "y": 0.62}
+  ]
+}

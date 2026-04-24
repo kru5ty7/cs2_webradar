@@ -1,0 +1,14 @@
+{
+  "map": "de_anubis",
+  "callouts": [
+    {"name": "T Spawn",   "x": 0.10, "y": 0.78},
+    {"name": "Mid",       "x": 0.38, "y": 0.50},
+    {"name": "Canal",     "x": 0.22, "y": 0.55},
+    {"name": "A Site",    "x": 0.55, "y": 0.28},
+    {"name": "Palace",    "x": 0.42, "y": 0.28},
+    {"name": "CT Spawn",  "x": 0.68, "y": 0.48},
+    {"name": "B Site",    "x": 0.62, "y": 0.72},
+    {"name": "Alley",     "x": 0.30, "y": 0.70},
+    {"name": "Connector", "x": 0.48, "y": 0.50}
+  ]
+}

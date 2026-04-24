@@ -1,0 +1,14 @@
+{
+  "map": "cs_italy",
+  "callouts": [
+    {"name": "T Spawn",   "x": 0.10, "y": 0.75},
+    {"name": "Mid",       "x": 0.35, "y": 0.52},
+    {"name": "Apartments","x": 0.20, "y": 0.38},
+    {"name": "Market",    "x": 0.42, "y": 0.35},
+    {"name": "Alley",     "x": 0.30, "y": 0.65},
+    {"name": "Hostage",   "x": 0.60, "y": 0.38},
+    {"name": "CT Spawn",  "x": 0.75, "y": 0.52},
+    {"name": "Balcony",   "x": 0.55, "y": 0.28},
+    {"name": "Back Alley","x": 0.50, "y": 0.68}
+  ]
+}

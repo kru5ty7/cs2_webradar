@@ -1,0 +1,17 @@
+{
+  "map": "de_overpass",
+  "callouts": [
+    {"name": "T Spawn",    "x": 0.12, "y": 0.82},
+    {"name": "Long",       "x": 0.20, "y": 0.55},
+    {"name": "Monster",    "x": 0.30, "y": 0.42},
+    {"name": "A Site",     "x": 0.48, "y": 0.28},
+    {"name": "Short",      "x": 0.38, "y": 0.35},
+    {"name": "Heaven",     "x": 0.55, "y": 0.22},
+    {"name": "CT Spawn",   "x": 0.68, "y": 0.38},
+    {"name": "Bathroom",   "x": 0.65, "y": 0.55},
+    {"name": "B Site",     "x": 0.60, "y": 0.72},
+    {"name": "Canal",      "x": 0.42, "y": 0.68},
+    {"name": "Playground", "x": 0.28, "y": 0.72},
+    {"name": "Water",      "x": 0.35, "y": 0.58}
+  ]
+}

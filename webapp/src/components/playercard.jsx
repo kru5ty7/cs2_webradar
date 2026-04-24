@@ -39,7 +39,7 @@ const PlayerCard = ({ playerData, isOnRightSide }) => {
           }}
         ></div>
         <img
-          className={`h-[8rem] ${isOnRightSide && `scale-x-[-1]`}`}
+          className={`h-[3.5rem] ${isOnRightSide && `scale-x-[-1]`}`}
           src={`./assets/characters/${modelName}.png`}
         ></img>
       </div>

@@ -12,10 +12,17 @@ const CONNECTION_TIMEOUT = 5000;
 const USE_LOCALHOST = 0;
 
 /* you can get your public ip from https://ipinfo.io/ip */
-const PUBLIC_IP = "your ip goes here".trim();
+const PUBLIC_IP = "192.168.31.17".trim();
 const PORT = 22006;
 
-const EFFECTIVE_IP = USE_LOCALHOST ? "localhost" : PUBLIC_IP.match(/[a-zA-Z]/) ? window.location.hostname : PUBLIC_IP;
+/*
+ * For ngrok: set VITE_WS_URL in a .env file or when starting vite, e.g.:
+ *   VITE_WS_URL=wss://xxxx-xxxx.ngrok-free.app/cs2_webradar
+ * This tells the frontend where the WebSocket ngrok tunnel is.
+ */
+const NGROK_WS_URL = import.meta.env.VITE_WS_URL || null;
+
+const EFFECTIVE_IP = USE_LOCALHOST ? "localhost" : window.location.hostname;
 
 const DEFAULT_SETTINGS = {
   dotSize: 1,
@@ -40,6 +47,7 @@ const App = () => {
   const [localTeam, setLocalTeam] = useState();
   const [bombData, setBombData] = useState();
   const [grenades, setGrenades] = useState([]);
+  const [dropped, setDropped]   = useState([]);
   const [settings, setSettings] = useState(loadSettings());
   const [bannerOpened, setBannerOpened] = useState(true)
 
@@ -54,16 +62,13 @@ const App = () => {
       let webSocketURL = null;
       let connectionTimeout = null;
 
-      if (PUBLIC_IP.startsWith("192.168")) {
-        document.getElementsByClassName(
-          "radar_message"
-        )[0].textContent = `A public IP address is required! Currently detected IP (${PUBLIC_IP}) is a private/local IP`;
-        return;
-      }
+      // Private IP check removed — LAN access uses window.location.hostname
 
       if (!webSocket) {
         try {
-          if (USE_LOCALHOST) {
+          if (NGROK_WS_URL) {
+            webSocketURL = NGROK_WS_URL;
+          } else if (USE_LOCALHOST) {
             webSocketURL = `ws://localhost:${PORT}/cs2_webradar`;
           } else {
             webSocketURL = `ws://${EFFECTIVE_IP}:${PORT}/cs2_webradar`;
@@ -108,6 +113,7 @@ const App = () => {
         setLocalTeam(parsedData.m_local_team);
         setBombData(parsedData.m_bomb);
         setGrenades(parsedData.m_grenades || []);
+        setDropped(parsedData.m_dropped   || []);
 
         const map = parsedData.m_map;
         if (map !== "invalid") {
@@ -168,14 +174,15 @@ const App = () => {
           </div>
         )}
 
-        <div className={`flex items-center justify-evenly`}>
-          <Latency
-            value={averageLatency}
-            settings={settings}
-            setSettings={setSettings}
-          />
+        {/* Latency/settings overlay — absolutely positioned, not in flex flow */}
+        <Latency
+          value={averageLatency}
+          settings={settings}
+          setSettings={setSettings}
+        />
 
-          <ul id="terrorist" className="lg:flex hidden flex-col gap-7 m-0 p-0">
+        <div className={`flex items-center justify-evenly w-full h-full overflow-hidden`}>
+          <ul id="terrorist" className="lg:flex hidden flex-col justify-center gap-2 m-0 p-0 shrink-0 overflow-hidden max-h-full">
             {playerArray
               .filter((player) => player.m_team == 2)
               .map((player) => (
@@ -196,19 +203,20 @@ const App = () => {
               averageLatency={averageLatency}
               bombData={bombData}
               grenades={grenades}
+              dropped={dropped}
               settings={settings}
             />
           )) || (
-              <div id="radar" className={`relative overflow-hidden origin-center`}>
-                <h1 className="radar_message">
-                  Connected! Waiting for data from usermode
-                </h1>
-              </div>
-            )}
+            <div id="radar" className="relative flex items-center justify-center">
+              <h1 className="radar_message">
+                Connected! Waiting for data from usermode
+              </h1>
+            </div>
+          )}
 
           <ul
             id="counterTerrorist"
-            className="lg:flex hidden flex-col gap-7 m-0 p-0"
+            className="lg:flex hidden flex-col justify-center gap-2 m-0 p-0 shrink-0 overflow-hidden max-h-full"
           >
             {playerArray
               .filter((player) => player.m_team == 3)

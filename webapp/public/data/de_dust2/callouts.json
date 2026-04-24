@@ -1,0 +1,25 @@
+{
+  "map": "de_dust2",
+  "callouts": [
+    {"name": "T Spawn",       "x": 0.35, "y": 0.87},
+    {"name": "B Lower",       "x": 0.20, "y": 0.78},
+    {"name": "B Upper",       "x": 0.23, "y": 0.66},
+    {"name": "B Doors",       "x": 0.21, "y": 0.54},
+    {"name": "B Site",        "x": 0.14, "y": 0.38},
+    {"name": "B Platform",    "x": 0.07, "y": 0.34},
+    {"name": "CT Spawn",      "x": 0.74, "y": 0.82},
+    {"name": "Short",         "x": 0.52, "y": 0.80},
+    {"name": "Mid Doors",     "x": 0.43, "y": 0.69},
+    {"name": "Xbox",          "x": 0.43, "y": 0.57},
+    {"name": "Catwalk",       "x": 0.52, "y": 0.50},
+    {"name": "CT Mid",        "x": 0.58, "y": 0.43},
+    {"name": "A Short",       "x": 0.63, "y": 0.37},
+    {"name": "Long Doors",    "x": 0.16, "y": 0.26},
+    {"name": "Long Corner",   "x": 0.29, "y": 0.21},
+    {"name": "A Long",        "x": 0.44, "y": 0.15},
+    {"name": "Pit",           "x": 0.65, "y": 0.20},
+    {"name": "A Site",        "x": 0.74, "y": 0.17},
+    {"name": "Goose",         "x": 0.80, "y": 0.10},
+    {"name": "A Car",         "x": 0.68, "y": 0.24}
+  ]
+}

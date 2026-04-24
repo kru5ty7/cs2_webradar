@@ -1,0 +1,15 @@
+{
+  "map": "de_ancient",
+  "callouts": [
+    {"name": "T Spawn",    "x": 0.12, "y": 0.80},
+    {"name": "Mid",        "x": 0.35, "y": 0.55},
+    {"name": "Cave",       "x": 0.25, "y": 0.42},
+    {"name": "A Site",     "x": 0.50, "y": 0.30},
+    {"name": "Temple",     "x": 0.40, "y": 0.30},
+    {"name": "CT Spawn",   "x": 0.70, "y": 0.45},
+    {"name": "C Connector","x": 0.55, "y": 0.55},
+    {"name": "B Site",     "x": 0.65, "y": 0.72},
+    {"name": "Jungle",     "x": 0.50, "y": 0.68},
+    {"name": "Donut",      "x": 0.42, "y": 0.72}
+  ]
+}
