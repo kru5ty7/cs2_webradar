@@ -27,6 +27,7 @@ const Radar = ({
       <CalloutLayer
         mapName={mapData?.name}
         radarImage={radarImageEl}
+        enabled={settings?.showCallouts ?? true}
       />
 
       {playerArray.map((player) => (

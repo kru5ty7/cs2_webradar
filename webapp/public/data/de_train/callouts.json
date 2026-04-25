@@ -1,16 +1,1 @@
-{
-  "map": "de_train",
-  "callouts": [
-    {"name": "T Spawn",    "x": 0.10, "y": 0.75},
-    {"name": "T Con",      "x": 0.25, "y": 0.55},
-    {"name": "Ivy",        "x": 0.20, "y": 0.38},
-    {"name": "A Site",     "x": 0.48, "y": 0.28},
-    {"name": "Ladder",     "x": 0.55, "y": 0.35},
-    {"name": "Z Con",      "x": 0.40, "y": 0.50},
-    {"name": "CT Spawn",   "x": 0.68, "y": 0.42},
-    {"name": "B Site",     "x": 0.58, "y": 0.72},
-    {"name": "Upper B",    "x": 0.45, "y": 0.68},
-    {"name": "Pop Dog",    "x": 0.32, "y": 0.70},
-    {"name": "Bomb Train", "x": 0.38, "y": 0.35}
-  ]
-}
+{"map": "de_train", "callouts": []}

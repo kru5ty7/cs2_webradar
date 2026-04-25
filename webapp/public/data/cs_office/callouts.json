@@ -1,15 +1,1 @@
-{
-  "map": "cs_office",
-  "callouts": [
-    {"name": "T Spawn",    "x": 0.08, "y": 0.50},
-    {"name": "Garage",     "x": 0.20, "y": 0.38},
-    {"name": "Reception",  "x": 0.35, "y": 0.35},
-    {"name": "Lobby",      "x": 0.30, "y": 0.55},
-    {"name": "Hallway",    "x": 0.50, "y": 0.40},
-    {"name": "Hostage",    "x": 0.65, "y": 0.35},
-    {"name": "CT Spawn",   "x": 0.78, "y": 0.50},
-    {"name": "Backyard",   "x": 0.55, "y": 0.68},
-    {"name": "Connector",  "x": 0.42, "y": 0.62},
-    {"name": "IT Room",    "x": 0.68, "y": 0.62}
-  ]
-}
+{"map": "cs_office", "callouts": []}

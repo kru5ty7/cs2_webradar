@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-ai_agent_helper
-CS2 WebRadar usermode — pure Python replacement for usermode.exe
-Reads CS2 game memory and streams JSON to the ws relay at port 22006.
+cs2_radar — combined CS2 memory reader + WebSocket server + HTTP static server.
+Double-click the compiled exe to start everything; a browser tab opens automatically.
 """
+import asyncio
 import ctypes
 import ctypes.wintypes as wintypes
+import functools
+import http.server
 import json
 import logging
 import logging.handlers
 import struct
 import sys
+import threading
 import time
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 try:
-    import websocket
+    import websockets
 except ImportError:
-    # log not set up yet — plain print is fine here
-    print("[error] websocket-client not installed. Run: pip install websocket-client")
+    print("[error] websockets not installed. Run: pip install websockets")
     sys.exit(1)
 
 # ── config ────────────────────────────────────────────────────────────────────
@@ -28,11 +31,11 @@ CONFIG_FILE = ROOT / "config.json"
 CACHE_FILE  = ROOT / "offsets_cache.json"
 LOG_FILE    = ROOT / "radar.log"
 
-WS_PORT          = 22006
-WS_PATH          = "/cs2_webradar"
-POLL_INTERVAL    = 0.1           # 10 Hz
-CACHE_MAX_AGE    = 3600          # re-fetch offsets every hour
-DUMPER_BASE      = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output"
+WS_PORT       = 22006
+HTTP_PORT     = 5173
+POLL_INTERVAL = 0.1    # 10 Hz
+CACHE_MAX_AGE = 3600
+DUMPER_BASE   = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output"
 
 # ── logging ───────────────────────────────────────────────────────────────────
 def _setup_logging() -> logging.Logger:
@@ -750,101 +753,123 @@ def load_config() -> dict:
     return default
 
 
-# ── main loop (single-threaded, synchronous) ──────────────────────────────────
-def run():
-    cfg     = load_config()
-    offsets = load_offsets()
+# ── connected browser clients ─────────────────────────────────────────────────
+_clients: set = set()
 
-    host   = "localhost" if cfg.get("m_use_localhost", True) else cfg.get("m_local_ip", "localhost")
-    ws_url = f"ws://{host}:{WS_PORT}{WS_PATH}"
-    log.info("relay target: %s", ws_url)
+
+async def _ws_handler(websocket):
+    _clients.add(websocket)
+    log.info("browser connected  (%d total)", len(_clients))
+    try:
+        await websocket.wait_closed()
+    finally:
+        _clients.discard(websocket)
+        log.info("browser disconnected (%d total)", len(_clients))
+
+
+async def _broadcast(payload: str):
+    dead = set()
+    for ws in list(_clients):
+        try:
+            await ws.send(payload)
+        except Exception:
+            dead.add(ws)
+    _clients.difference_update(dead)
+
+
+def _static_path() -> str | None:
+    if getattr(sys, "frozen", False):
+        p = Path(sys._MEIPASS) / "webapp_dist"
+    else:
+        p = Path(__file__).parent.parent / "webapp" / "dist"
+    if p.exists():
+        return str(p)
+    log.warning("static dir not found at %s — HTTP server disabled (run npm run build)", p)
+    return None
+
+
+def _start_http(static_dir: str):
+    class _Silent(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *_): pass
+        def log_error(self, *_): pass
+
+    handler = functools.partial(_Silent, directory=static_dir)
+    srv = http.server.HTTPServer(("", HTTP_PORT), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    log.info("HTTP  → http://localhost:%d", HTTP_PORT)
+
+
+# ── main async loop ───────────────────────────────────────────────────────────
+async def _run_async():
+    load_config()
+    offsets = load_offsets()
 
     mem    = Memory()
     reader: CS2Reader | None = None
-    ws:     websocket.WebSocket | None = None
-
-    # Diagnostic throttle — print "waiting for match" at most once per 5 s
     _last_waiting_log = 0.0
+    loop = asyncio.get_event_loop()
 
-    while True:
+    async with websockets.serve(_ws_handler, "", WS_PORT):
+        log.info("WS    → ws://localhost:%d/cs2_webradar", WS_PORT)
 
-        # ── 1. ensure relay connection ────────────────────────────────────────
-        if ws is None:
+        static_dir = _static_path()
+        if static_dir:
+            _start_http(static_dir)
+            webbrowser.open(f"http://localhost:{HTTP_PORT}")
+
+        while True:
+            # ── ensure CS2 is open ────────────────────────────────────────────
+            if not mem.handle:
+                pid = await loop.run_in_executor(None, lambda: mem.find_pid("cs2.exe"))
+                if not pid:
+                    log.info("waiting for cs2.exe to start...")
+                    await asyncio.sleep(3)
+                    continue
+                if not mem.open(pid):
+                    log.error("OpenProcess failed — run as administrator")
+                    await asyncio.sleep(3)
+                    continue
+                log.info("found cs2.exe  pid=%d", pid)
+                reader = None
+
+            # ── ensure reader is initialised ──────────────────────────────────
+            if reader is None:
+                r = CS2Reader(mem, offsets)
+                ok = await loop.run_in_executor(None, r.setup)
+                if not ok:
+                    now = time.time()
+                    if now - _last_waiting_log >= 5:
+                        log.info("waiting for CS2 to load into a game...")
+                        _last_waiting_log = now
+                    await asyncio.sleep(1)
+                    continue
+                reader = r
+                log.info("reader ready — watching entity list at 10 Hz")
+
+            # ── collect + broadcast ───────────────────────────────────────────
             try:
-                log.info("connecting to relay...")
-                ws = websocket.WebSocket()
-                ws.connect(ws_url)
-                log.info("connected to relay ✓")
-            except Exception as exc:
-                log.warning("relay not available (%s) — is 'npm run dev' running?", exc)
-                ws = None
-                time.sleep(3)
-                continue
-
-        # ── 2. ensure CS2 is open ────────────────────────────────────────────
-        if not mem.handle:
-            pid = mem.find_pid("cs2.exe")
-            if not pid:
-                log.info("waiting for cs2.exe to start...")
-                time.sleep(3)
-                continue
-            if not mem.open(pid):
-                log.error("OpenProcess failed — run as administrator")
-                time.sleep(3)
-                continue
-            log.info("found cs2.exe  pid=%d", pid)
-            reader = None  # force re-setup after re-attach
-
-        # ── 3. ensure reader is initialised ──────────────────────────────────
-        if reader is None:
-            r = CS2Reader(mem, offsets)
-            if not r.setup():
-                now = time.time()
-                if now - _last_waiting_log >= 5:
-                    log.info("waiting for CS2 to load into a game...")
-                    _last_waiting_log = now
-                time.sleep(1)
-                continue
-            reader = r
-            log.info("reader ready — watching entity list at 10 Hz")
-
-        # ── 4. collect + send ─────────────────────────────────────────────────
-        try:
-            data = reader.collect()
-
-            if data is None:
-                now = time.time()
-                if now - _last_waiting_log >= 5:
-                    log.info("in CS2 but not in an active match (team=spectator/none)")
-                    _last_waiting_log = now
-            else:
-                payload = json.dumps(data)
-                ws.send(payload)
-                # log.debug("sent %d players | map=%s | grenades=%d",
-                #           len(data.get("m_players", [])),
-                #           data.get("m_map", "?"),
-                #           len(data.get("m_grenades", [])))
-
-        except (websocket.WebSocketConnectionClosedException,
-                BrokenPipeError, ConnectionResetError, OSError) as exc:
-            if isinstance(exc, OSError):
+                data = await loop.run_in_executor(None, reader.collect)
+                if data is None:
+                    now = time.time()
+                    if now - _last_waiting_log >= 5:
+                        log.info("in CS2 but not in an active match (team=spectator/none)")
+                        _last_waiting_log = now
+                else:
+                    await _broadcast(json.dumps(data))
+            except OSError as exc:
                 log.warning("CS2 process lost (%s) — detaching", exc)
                 mem.close()
                 reader = None
-            else:
-                log.warning("relay connection lost (%s) — reconnecting...", exc)
-                try:
-                    ws.close()
-                except Exception:
-                    pass
-                ws = None
+            except Exception as exc:
+                log.error("unexpected error in collect/send: %s", exc, exc_info=True)
 
-        except Exception as exc:
-            log.error("unexpected error in collect/send: %s", exc, exc_info=True)
+            await asyncio.sleep(POLL_INTERVAL)
 
-        time.sleep(POLL_INTERVAL)
+
+def run():
+    asyncio.run(_run_async())
 
 
 if __name__ == "__main__":
-    log.info("ai_agent_helper starting")
+    log.info("cs2_radar starting")
     run()

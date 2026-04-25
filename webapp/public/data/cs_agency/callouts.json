@@ -1,15 +1,1 @@
-{
-  "map": "cs_agency",
-  "callouts": [
-    {"name": "T Spawn",   "x": 0.10, "y": 0.72},
-    {"name": "Fountain",  "x": 0.25, "y": 0.55},
-    {"name": "Lobby",     "x": 0.38, "y": 0.45},
-    {"name": "Stairs",    "x": 0.45, "y": 0.35},
-    {"name": "Terrace",   "x": 0.32, "y": 0.35},
-    {"name": "Hostage",   "x": 0.62, "y": 0.30},
-    {"name": "CT Spawn",  "x": 0.75, "y": 0.50},
-    {"name": "Pool",      "x": 0.55, "y": 0.68},
-    {"name": "Garage",    "x": 0.42, "y": 0.70},
-    {"name": "Street",    "x": 0.20, "y": 0.75}
-  ]
-}
+{"map": "cs_agency", "callouts": []}

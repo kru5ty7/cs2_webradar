@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = {
   showSmoke: true,
   showMolly: true,
   showFlash: true,
+  showCallouts: true,
 };
 
 const loadSettings = () => {

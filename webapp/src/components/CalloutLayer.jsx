@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 // Callouts are bundled locally in public/data/{map}/callouts.json
 
-const CalloutLayer = ({ mapName, radarImage }) => {
+const CalloutLayer = ({ mapName, radarImage, enabled = true }) => {
+  if (!enabled) return null;
   const [callouts, setCallouts] = useState([]);
 
   useEffect(() => {

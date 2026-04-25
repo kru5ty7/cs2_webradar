@@ -6499,3 +6499,16 @@
 2026-04-24 12:39:03  [32mINFO    [0m  in CS2 but not in an active match (team=spectator/none)
 2026-04-24 12:39:08  [32mINFO    [0m  in CS2 but not in an active match (team=spectator/none)
 2026-04-24 12:39:13  [32mINFO    [0m  in CS2 but not in an active match (team=spectator/none)
+2026-04-24 22:59:33  [32mINFO    [0m  ai_agent_helper starting
+2026-04-24 22:59:33  [32mINFO    [0m  fetching offsets from cs2-dumper...
+2026-04-24 22:59:34  [36mDEBUG   [0m  _parse_fields: parsed 353 classes
+2026-04-24 22:59:34  [32mINFO    [0m  offsets fetched and cached → offsets_cache.json
+2026-04-24 22:59:34  [32mINFO    [0m  relay target: ws://localhost:22006/cs2_webradar
+2026-04-24 22:59:34  [32mINFO    [0m  connecting to relay...
+2026-04-24 22:59:34  [32mINFO    [0m  connected to relay ✓
+2026-04-24 22:59:34  [32mINFO    [0m  found cs2.exe  pid=16132
+2026-04-24 22:59:34  [36mDEBUG   [0m  dwEntityList=0x24CED50  dwGlobalVars=0x20496A0  dwLocalPlayerController=0x2308520
+2026-04-24 22:59:34  [32mINFO    [0m  client.dll    @ 0x00007FFE66A20000
+2026-04-24 22:59:34  [32mINFO    [0m  entity system @ 0x00000444A94F7800
+2026-04-24 22:59:34  [32mINFO    [0m  global vars   @ 0x0000044534010090
+2026-04-24 22:59:34  [32mINFO    [0m  reader ready — watching entity list at 10 Hz

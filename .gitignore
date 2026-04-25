@@ -1,34 +1,17 @@
 # ========================
 # Project-specific ignores
 # ========================
-kernelmode
+kernelmode/
 usermode/src/driver/driver.hpp
 
 # ========================
-# Visual Studio
+# Visual Studio / C++
 # ========================
 .vs/
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
-
-# Build results
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-[Bb]uild/
-[Oo]ut/
-bld/
-
-# NuGet packages
-packages/
-*.nupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
-
-# Visual Studio cache/options
 *.aps
 *.ncb
 *.opendb
@@ -38,8 +21,16 @@ packages/
 *.VC.db
 *.VC.VC.opendb
 ipch/
-
-# ReSharper
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+[Oo]ut/
+bld/
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
 _ReSharper*/
 *.DotSettings.user
 
@@ -47,13 +38,32 @@ _ReSharper*/
 # Node.js / Webapp
 # ========================
 node_modules/
-dist/
+webapp/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .env
 .env.local
 .env.*.local
+
+# ========================
+# Python / ai_agent_helper
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# PyInstaller build artefacts
+ai_agent_helper/build/
+ai_agent_helper/dist/
+ai_agent_helper/*.spec.bak
+
+# Runtime files (regenerated on each run)
+ai_agent_helper/offsets_cache.json
+ai_agent_helper/radar.log
+ai_agent_helper/config.json
 
 # ========================
 # OS generated files
