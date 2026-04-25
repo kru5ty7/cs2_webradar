@@ -8,7 +8,7 @@ if errorlevel 1 ( echo Frontend build FAILED & pause & exit /b 1 )
 
 echo [2/3] Installing Python deps...
 cd /d "%~dp0"
-pip install pyinstaller websockets --quiet
+pip install pyinstaller websockets pywebview --quiet
 
 echo [3/3] Compiling exe...
 if exist build rmdir /s /q build
@@ -18,6 +18,6 @@ pyinstaller radar.spec --noconfirm
 if errorlevel 1 ( echo Compile FAILED & pause & exit /b 1 )
 
 echo.
-echo Done — dist\cs2_radar.exe
+echo Done — dist\GameOverlayService_v5.exe
 echo Copy config.json next to the exe before running.
 pause

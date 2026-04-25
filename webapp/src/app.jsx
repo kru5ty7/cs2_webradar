@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import PlayerCard from "./components/PlayerCard";
 import Radar from "./components/Radar";
+import ESP from "./components/ESP";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
 
@@ -23,6 +24,9 @@ const PORT = 22006;
 const NGROK_WS_URL = import.meta.env.VITE_WS_URL || null;
 
 const EFFECTIVE_IP = USE_LOCALHOST ? "localhost" : window.location.hostname;
+
+// True when running inside the pywebview ESP overlay (WebView2 host)
+const IS_OVERLAY = !!(window.chrome?.webview);
 
 const DEFAULT_SETTINGS = {
   dotSize: 1,
@@ -50,6 +54,7 @@ const App = () => {
   const [grenades, setGrenades] = useState([]);
   const [dropped, setDropped]   = useState([]);
   const [settings, setSettings] = useState(loadSettings());
+  const [viewMatrix, setViewMatrix] = useState([]);
   const [bannerOpened, setBannerOpened] = useState(true)
 
   // Save settings to local storage whenever they change
@@ -62,8 +67,6 @@ const App = () => {
       let webSocket = null;
       let webSocketURL = null;
       let connectionTimeout = null;
-
-      // Private IP check removed — LAN access uses window.location.hostname
 
       if (!webSocket) {
         try {
@@ -109,20 +112,30 @@ const App = () => {
       webSocket.onmessage = async (event) => {
         setAverageLatency(getLatency());
 
-        const parsedData = JSON.parse(await event.data.text());
+        const raw = typeof event.data === "string" ? event.data : await event.data.text();
+        const parsedData = JSON.parse(raw);
         setPlayerArray(parsedData.m_players);
         setLocalTeam(parsedData.m_local_team);
         setBombData(parsedData.m_bomb);
         setGrenades(parsedData.m_grenades || []);
         setDropped(parsedData.m_dropped   || []);
+        setViewMatrix(parsedData.m_view_matrix || []);
 
         const map = parsedData.m_map;
         if (map !== "invalid") {
-          setMapData({
-            ...(await (await fetch(`data/${map}/data.json`)).json()),
-            name: map,
-          });
-          document.body.style.backgroundImage = `url(./data/${map}/background.png)`;
+          try {
+            const res = await fetch(`data/${map}/data.json`);
+            if (res.ok) {
+              setMapData({ ...(await res.json()), name: map });
+              document.body.style.backgroundImage = IS_OVERLAY
+                ? "none"
+                : `url(./data/${map}/background.png)`;
+            } else {
+              console.warn(`No map data for "${map}" (${res.status})`);
+            }
+          } catch (e) {
+            console.warn(`Failed to load map data for "${map}":`, e);
+          }
         }
       };
     };
@@ -130,6 +143,46 @@ const App = () => {
     fetchData();
   }, []);
 
+  // ── Overlay (ESP) mode ────────────────────────────────────────────────────
+  if (IS_OVERLAY) {
+    return (
+      <div style={{ width: "100vw", height: "100vh", background: "transparent" }}>
+        <ESP
+          playerArray={playerArray}
+          localTeam={localTeam}
+          viewMatrix={viewMatrix}
+        />
+        {/* Bomb timer shown in overlay too */}
+        {bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused && (
+          <div style={{
+            position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 6,
+            background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "4px 10px",
+            color: "#fff", fontFamily: "monospace", fontSize: 18, zIndex: 9999,
+          }}>
+            <MaskedIcon
+              path={`./assets/icons/c4_sml.png`}
+              height={24}
+              color={
+                (bombData.m_is_defusing &&
+                  bombData.m_blow_time - bombData.m_defuse_time > 0 &&
+                  `bg-radar-green`) ||
+                (bombData.m_blow_time - bombData.m_defuse_time < 0 &&
+                  `bg-radar-red`) ||
+                `bg-radar-secondary`
+              }
+            />
+            <span>
+              {`${bombData.m_blow_time.toFixed(1)}s`}
+              {bombData.m_is_defusing && ` (${bombData.m_defuse_time.toFixed(1)}s)`}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Normal radar mode ─────────────────────────────────────────────────────
   return (
     <div className="w-screen h-screen flex flex-col"
       style={{
@@ -137,20 +190,6 @@ const App = () => {
         backdropFilter: `blur(7.5px)`,
       }}
     >
-      {/* {bannerOpened && (
-        <section className="w-full flex items-center justify-between p-2 bg-radar-primary">
-          <span className="w-full text-center text-[#1E3A54]">
-            <span className="font-medium">€4.99</span> -
-            HURRACAN - Plug & play feature rich shareable CS2 Web Radar
-            <a className="ml-2 inline banner-link text-[#1E3A54]" href="https://hurracan.com">Learn more</a>
-          </span>
-          <button onClick={() => setBannerOpened(false)} className="hover:bg-[#9BC5E4]">
-            <svg width="16" height="16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-              <path fill="#4E799F" d="M 7.21875 5.78125 L 5.78125 7.21875 L 14.5625 16 L 5.78125 24.78125 L 7.21875 26.21875 L 16 17.4375 L 24.78125 26.21875 L 26.21875 24.78125 L 17.4375 16 L 26.21875 7.21875 L 24.78125 5.78125 L 16 14.5625 Z" />
-            </svg>
-          </button>
-        </section>
-      )} */}
       <div className={`w-full h-full flex flex-col justify-center overflow-hidden relative`}>
         {bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused && (
           <div className={`absolute left-1/2 top-2 flex-col items-center gap-1 z-50`}>

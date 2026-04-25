@@ -592,7 +592,7 @@ class CS2Reader:
                 health  = self.mem.i32(pawn + off_health) if off_health else 0
                 is_dead = health <= 0
 
-                x, y, _ = self._origin(pawn)
+                x, y, z = self._origin(pawn)
                 eye_yaw  = self.mem.f32(pawn + off_eye + 4) if off_eye else 0.0
                 steam_id = self.mem.u64(ent + off_steam) if off_steam else 0
                 armor    = self.mem.i32(pawn + off_armor) if off_armor else 0
@@ -634,7 +634,7 @@ class CS2Reader:
                     "m_steam_id":   str(steam_id),
                     "m_money":      money,
                     "m_armor":      armor,
-                    "m_position":   {"x": x, "y": y},
+                    "m_position":   {"x": x, "y": y, "z": z},
                     "m_eye_angle":  eye_yaw,
                     "m_has_helmet": has_helmet,
                     "m_has_defuser":has_defuser,
@@ -724,23 +724,36 @@ class CS2Reader:
                                 if x or y:
                                     dropped.append({"x": x, "y": y, "name": wname[7:]})
 
+        # View/projection matrix for world-to-screen ESP projection
+        view_matrix = []
+        dw_vm = self._g.get("dwViewMatrix", 0)
+        if dw_vm:
+            raw = self.mem._read(self.client_base + dw_vm, 64)  # 16 × float32
+            view_matrix = list(struct.unpack_from("<16f", raw))
+
         return {
-            "m_local_team": local_team,
-            "m_players":    players,
-            "m_bomb":       bomb_data,
-            "m_grenades":   grenades,
-            "m_dropped":    dropped,
-            "m_map":        map_name,
+            "m_local_team":   local_team,
+            "m_players":      players,
+            "m_bomb":         bomb_data,
+            "m_grenades":     grenades,
+            "m_dropped":      dropped,
+            "m_map":          map_name,
+            "m_view_matrix":  view_matrix,
         }
 
     def _get_map_name(self) -> str:
         if not self.gvars:
             return "invalid"
-        # m_map_name is a CUtlString — first member is char*, read via pointer
         char_ptr = self.mem.ptr(self.gvars + _MAP_NAME_OFF)
         name = self.mem.cstring(char_ptr) if char_ptr else ""
         if not name or "<empty>" in name or len(name) < 3:
             return "invalid"
+        # Strip path prefix (e.g. "maps/de_dust2" → "de_dust2")
+        if "/" in name:
+            name = name.rsplit("/", 1)[-1]
+        # Strip file extension (e.g. "de_dust2.vpk" → "de_dust2")
+        if "." in name:
+            name = name.rsplit(".", 1)[0]
         return name
 
 
@@ -794,14 +807,59 @@ def _start_http(static_dir: str):
         def log_error(self, *_): pass
 
     handler = functools.partial(_Silent, directory=static_dir)
-    srv = http.server.HTTPServer(("", HTTP_PORT), handler)
+    srv = http.server.HTTPServer(("0.0.0.0", HTTP_PORT), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    log.info("HTTP  → http://localhost:%d", HTTP_PORT)
+    log.info("HTTP  → http://0.0.0.0:%d", HTTP_PORT)
+
+
+def _ensure_firewall_rules():
+    """
+    Ensure Windows Firewall allows inbound traffic on both ports.
+    Uses program-based rules (most reliable) + port-based rules as backup.
+    Force-deletes then re-adds so locale/state issues never cause a stale rule.
+    """
+    import subprocess
+
+    exe = sys.executable  # path to the running exe (or python.exe in dev)
+
+    def _netsh(*args):
+        r = subprocess.run(
+            ["netsh", "advfirewall", "firewall", *args],
+            capture_output=True, text=True, encoding="utf-8", errors="ignore"
+        )
+        return r.returncode == 0, (r.stdout + r.stderr).strip()
+
+    # 1. Program-based rule — allows all ports used by this exe
+    prog_rule = "CS2Radar-Program"
+    _netsh("delete", "rule", f"name={prog_rule}")  # remove stale copy if any
+    ok, out = _netsh(
+        "add", "rule", f"name={prog_rule}",
+        "dir=in", "action=allow", "protocol=TCP",
+        f"program={exe}", "enable=yes",
+    )
+    if ok:
+        log.info("firewall: program rule added for %s", exe)
+    else:
+        log.warning("firewall: program rule failed: %s", out)
+
+    # 2. Port-based rules as fallback
+    for rule_name, port in [("CS2Radar-WS", WS_PORT), ("CS2Radar-HTTP", HTTP_PORT)]:
+        _netsh("delete", "rule", f"name={rule_name}")
+        ok, out = _netsh(
+            "add", "rule", f"name={rule_name}",
+            "dir=in", "action=allow", "protocol=TCP",
+            f"localport={port}", "enable=yes",
+        )
+        if ok:
+            log.info("firewall: port rule added  %s → %d", rule_name, port)
+        else:
+            log.warning("firewall: port rule failed %s: %s", rule_name, out)
 
 
 # ── main async loop ───────────────────────────────────────────────────────────
 async def _run_async():
     load_config()
+    _ensure_firewall_rules()
     offsets = load_offsets()
 
     mem    = Memory()
@@ -809,7 +867,7 @@ async def _run_async():
     _last_waiting_log = 0.0
     loop = asyncio.get_event_loop()
 
-    async with websockets.serve(_ws_handler, "", WS_PORT):
+    async with websockets.serve(_ws_handler, "0.0.0.0", WS_PORT):
         log.info("WS    → ws://localhost:%d/cs2_webradar", WS_PORT)
 
         static_dir = _static_path()
@@ -866,10 +924,23 @@ async def _run_async():
             await asyncio.sleep(POLL_INTERVAL)
 
 
-def run():
-    asyncio.run(_run_async())
+def run(overlay: bool = False):
+    if overlay:
+        t = threading.Thread(target=lambda: asyncio.run(_run_async()), daemon=True, name="radar-backend")
+        t.start()
+        time.sleep(1.5)
+        import overlay as ov
+        ov.start(f"http://localhost:{HTTP_PORT}")
+        t.join()
+    else:
+        asyncio.run(_run_async())
 
 
 if __name__ == "__main__":
-    log.info("cs2_radar starting")
-    run()
+    import argparse
+    ap = argparse.ArgumentParser(description="CS2 Radar")
+    ap.add_argument("--overlay", action="store_true",
+                    help="Full-screen ESP overlay on top of CS2 (borderless windowed required)")
+    args = ap.parse_args()
+    log.info("cs2_radar starting  (overlay=%s)", args.overlay)
+    run(overlay=args.overlay)
