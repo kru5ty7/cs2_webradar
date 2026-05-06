@@ -6,6 +6,7 @@ import Radar from "./components/Radar";
 import ESP from "./components/ESP";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
+import SettingsButton from "./components/SettingsButton";
 
 const CONNECTION_TIMEOUT = 5000;
 
@@ -56,7 +57,7 @@ const loadSettings = () => {
 // ── Drag bar for overlay mode ─────────────────────────────────────────────────
 // Mousedown tracks pointer movement and calls pywebview.api.move() each frame,
 // which tells the Python overlay to reposition the Win32 window.
-const DragBar = ({ bombData }) => {
+const DragBar = ({ bombData, settings, setSettings }) => {
   const onMouseDown = (e) => {
     if (e.button !== 0) return;
     const api = window.pywebview?.api;
@@ -127,18 +128,28 @@ const DragBar = ({ bombData }) => {
         </span>
       )}
 
-      {/* Right: close button */}
-      <span
-        onMouseDown={(e) => { e.stopPropagation(); window.pywebview?.api?.close(); }}
-        style={{
-          color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
-          cursor: "pointer", padding: "0 2px",
-        }}
-        onMouseEnter={e => e.target.style.color = "#f55"}
-        onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.4)"}
+      {/* Right: settings + close */}
+      <div
+        onMouseDown={e => e.stopPropagation()}
+        style={{ display: "flex", alignItems: "center", gap: 6 }}
       >
-        ×
-      </span>
+        {settings && setSettings && (
+          <div style={{ transform: "scale(0.8)", transformOrigin: "right center" }}>
+            <SettingsButton settings={settings} onSettingsChange={setSettings} />
+          </div>
+        )}
+        <span
+          onMouseDown={(e) => { e.stopPropagation(); window.pywebview?.api?.close(); }}
+          style={{
+            color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
+            cursor: "pointer", padding: "0 2px",
+          }}
+          onMouseEnter={e => e.target.style.color = "#f55"}
+          onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.4)"}
+        >
+          ×
+        </span>
+      </div>
     </div>
   );
 };
@@ -285,8 +296,7 @@ const App = () => {
       }}>
 
         {/* ── Drag bar ── */}
-        {/* Mousedown here starts dragging the window via pywebview.api.move() */}
-        <DragBar bombData={bombData} />
+        <DragBar bombData={bombData} settings={settings} setSettings={setSettings} />
 
         {/* ── Radar ── */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>

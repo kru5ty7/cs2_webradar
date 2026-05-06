@@ -14,7 +14,8 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20 max-h-[70vh] overflow-y-auto">
+        <div className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20 max-h-[80vh] overflow-y-auto"
+          style={{ zIndex: 9999 }}>
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
           <div className="space-y-3">
