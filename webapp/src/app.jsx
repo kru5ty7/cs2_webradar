@@ -25,8 +25,13 @@ const NGROK_WS_URL = import.meta.env.VITE_WS_URL || null;
 
 const EFFECTIVE_IP = USE_LOCALHOST ? "localhost" : window.location.hostname;
 
-// True when running inside the pywebview ESP overlay (WebView2 host)
+// True when running inside any pywebview window (WebView2 host)
 const IS_OVERLAY = !!(window.chrome?.webview);
+
+// Which overlay mode was requested — read from ?mode= URL param
+const _urlMode   = new URLSearchParams(window.location.search).get("mode");
+const IS_ESP     = IS_OVERLAY && _urlMode === "esp";
+const IS_MINIMAP = IS_OVERLAY && _urlMode !== "esp";
 
 const DEFAULT_SETTINGS = {
   dotSize: 1,
@@ -38,11 +43,104 @@ const DEFAULT_SETTINGS = {
   showMolly: true,
   showFlash: true,
   showCallouts: true,
+  bombColor: "#ff4500",
+  bombHighlight: true,
+  showDeathCross: true,
 };
 
 const loadSettings = () => {
   const savedSettings = localStorage.getItem("radarSettings");
   return savedSettings ? JSON.parse(savedSettings) : DEFAULT_SETTINGS;
+};
+
+// ── Drag bar for overlay mode ─────────────────────────────────────────────────
+// Mousedown tracks pointer movement and calls pywebview.api.move() each frame,
+// which tells the Python overlay to reposition the Win32 window.
+const DragBar = ({ bombData }) => {
+  const onMouseDown = (e) => {
+    if (e.button !== 0) return;
+    const api = window.pywebview?.api;
+    if (!api) return;
+
+    // Capture where on the bar the user clicked (offset within the window)
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    // We need the current window position — ask Win32 via the API
+    // For simplicity: track cumulative delta from a stored origin
+    let originX = null;
+    let originY = null;
+
+    const onMove = async (me) => {
+      if (originX === null) {
+        // First move — fetch current window screen position from Python
+        try {
+          const pos = await api.get_position?.();
+          originX = pos ? pos[0] : 10;
+          originY = pos ? pos[1] : 10;
+        } catch {
+          originX = 10; originY = 10;
+        }
+      }
+      const dx = me.screenX - e.screenX;
+      const dy = me.screenY - e.screenY;
+      api.move(originX + dx, originY + dy);
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const hasBomb = bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused;
+
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      style={{
+        height: 22,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 8px",
+        cursor: "grab",
+        flexShrink: 0,
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      {/* Left: label */}
+      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, letterSpacing: "0.1em" }}>
+        CS2 RADAR
+      </span>
+
+      {/* Centre: bomb timer if active */}
+      {hasBomb && (
+        <span style={{
+          color: bombData.m_is_defusing ? "#4fc" : "#f84",
+          fontSize: 11, fontFamily: "monospace", fontWeight: 700,
+        }}>
+          {bombData.m_blow_time.toFixed(1)}s
+          {bombData.m_is_defusing && ` (${bombData.m_defuse_time.toFixed(1)}s)`}
+        </span>
+      )}
+
+      {/* Right: close button */}
+      <span
+        onMouseDown={(e) => { e.stopPropagation(); window.pywebview?.api?.close(); }}
+        style={{
+          color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
+          cursor: "pointer", padding: "0 2px",
+        }}
+        onMouseEnter={e => e.target.style.color = "#f55"}
+        onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.4)"}
+      >
+        ×
+      </span>
+    </div>
+  );
 };
 
 const App = () => {
@@ -143,8 +241,8 @@ const App = () => {
     fetchData();
   }, []);
 
-  // ── Overlay (ESP) mode ────────────────────────────────────────────────────
-  if (IS_OVERLAY) {
+  // ── ESP mode — full-screen transparent, click-through ────────────────────
+  if (IS_ESP) {
     return (
       <div style={{ width: "100vw", height: "100vh", background: "transparent" }}>
         <ESP
@@ -152,32 +250,68 @@ const App = () => {
           localTeam={localTeam}
           viewMatrix={viewMatrix}
         />
-        {/* Bomb timer shown in overlay too */}
+        {/* Bomb timer HUD */}
         {bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused && (
           <div style={{
             position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)",
             display: "flex", alignItems: "center", gap: 6,
-            background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "4px 10px",
+            background: "rgba(0,0,0,0.6)", borderRadius: 6, padding: "4px 12px",
             color: "#fff", fontFamily: "monospace", fontSize: 18, zIndex: 9999,
+            pointerEvents: "none",
           }}>
-            <MaskedIcon
-              path={`./assets/icons/c4_sml.png`}
-              height={24}
-              color={
-                (bombData.m_is_defusing &&
-                  bombData.m_blow_time - bombData.m_defuse_time > 0 &&
-                  `bg-radar-green`) ||
-                (bombData.m_blow_time - bombData.m_defuse_time < 0 &&
-                  `bg-radar-red`) ||
-                `bg-radar-secondary`
-              }
-            />
+            <MaskedIcon path="./assets/icons/c4_sml.png" height={22}
+              color={bombData.m_is_defusing ? "bg-radar-green" : "bg-radar-secondary"} />
             <span>
-              {`${bombData.m_blow_time.toFixed(1)}s`}
+              {bombData.m_blow_time.toFixed(1)}s
               {bombData.m_is_defusing && ` (${bombData.m_defuse_time.toFixed(1)}s)`}
             </span>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ── Minimap overlay mode ──────────────────────────────────────────────────
+  if (IS_MINIMAP) {
+    return (
+      <div style={{
+        width: "100vw", height: "100vh",
+        display: "flex", flexDirection: "column",
+        background: "rgba(10, 20, 30, 0.92)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 6,
+        overflow: "hidden",
+        userSelect: "none",
+      }}>
+
+        {/* ── Drag bar ── */}
+        {/* Mousedown here starts dragging the window via pywebview.api.move() */}
+        <DragBar bombData={bombData} />
+
+        {/* ── Radar ── */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {mapData && playerArray.length > 0 ? (
+            <Radar
+              playerArray={playerArray}
+              radarImage={`./data/${mapData.name}/radar.png`}
+              mapData={mapData}
+              localTeam={localTeam}
+              averageLatency={averageLatency}
+              bombData={bombData}
+              grenades={grenades}
+              dropped={dropped}
+              settings={{ ...settings, showCallouts: true, showViewCones: true }}
+            />
+          ) : (
+            <div style={{
+              height: "100%", display: "flex", alignItems: "center",
+              justifyContent: "center", color: "rgba(255,255,255,0.4)",
+              fontSize: 12,
+            }}>
+              Waiting for game data…
+            </div>
+          )}
+        </div>
       </div>
     );
   }

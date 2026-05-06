@@ -47,6 +47,10 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
     y: radarImageBounding.height * effectivePosition.y - playerBounding.height * 0.5,
   };
 
+  // When death cross is disabled, hide dead players entirely
+  const showDeathCross = settings.showDeathCross ?? true;
+  if (playerData.m_is_dead && !showDeathCross) return null;
+
   return (
     <div
       className={`absolute origin-center rounded-[100%] left-0 top-0`}
@@ -57,7 +61,7 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
         transform: `translate(${radarImageTranslation.x}px, ${radarImageTranslation.y}px)`,
         transition: `transform ${averageLatency}ms linear`,
         zIndex: `${(playerData.m_is_dead && `0`) || `1`}`,
-        WebkitMask: `${(playerData.m_is_dead && `url('./assets/icons/icon-enemy-death_png.png') no-repeat center / contain`) || `none`}`,
+        WebkitMask: `${(playerData.m_is_dead && showDeathCross && `url('./assets/icons/icon-enemy-death_png.png') no-repeat center / contain`) || `none`}`,
       }}
     >
       {/* Name above the dot - outside rotation container */}

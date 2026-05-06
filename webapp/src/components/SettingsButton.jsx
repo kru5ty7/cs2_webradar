@@ -126,6 +126,55 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
                   className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
                 />
               </label>
+
+              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
+                <span className="text-radar-secondary text-sm">Death Cross</span>
+                <input
+                  type="checkbox"
+                  checked={settings.showDeathCross ?? true}
+                  onChange={(e) => onSettingsChange({ ...settings, showDeathCross: e.target.checked })}
+                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
+                <span className="text-radar-secondary text-sm">Bomb Pulse</span>
+                <input
+                  type="checkbox"
+                  checked={settings.bombHighlight ?? true}
+                  onChange={(e) => onSettingsChange({ ...settings, bombHighlight: e.target.checked })}
+                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
+                />
+              </label>
+            </div>
+
+            {/* Bomb color */}
+            <div className="pt-1">
+              <span className="text-radar-secondary text-sm block mb-2">Bomb Color</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {["#ff4500","#ffdd00","#ffffff","#00cfff","#c90b0b"].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => onSettingsChange({ ...settings, bombColor: c })}
+                    style={{
+                      background: c,
+                      width: 22, height: 22,
+                      borderRadius: "50%",
+                      border: settings.bombColor === c ? "2px solid #fff" : "2px solid transparent",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                    title={c}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={settings.bombColor ?? "#ff4500"}
+                  onChange={(e) => onSettingsChange({ ...settings, bombColor: e.target.value })}
+                  style={{ width: 22, height: 22, padding: 0, border: "none", borderRadius: "50%", cursor: "pointer", background: "none" }}
+                  title="Custom color"
+                />
+              </div>
             </div>
           </div>
         </div>

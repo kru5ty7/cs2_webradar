@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes bomb-pulse {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(2.4); opacity: 0;   }
+  100% { transform: scale(2.4); opacity: 0;   }
+}
+.bomb-pulse {
+  animation: bomb-pulse 1s ease-out infinite;
+  pointer-events: none;
+}
+
 @font-face {
   font-family: "TASAOrbiter";
   src: url("./assets/typefaces/TASAOrbiterVF.woff2");

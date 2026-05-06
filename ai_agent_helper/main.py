@@ -6,7 +6,6 @@ Double-click the compiled exe to start everything; a browser tab opens automatic
 import asyncio
 import ctypes
 import ctypes.wintypes as wintypes
-import functools
 import http.server
 import json
 import logging
@@ -361,11 +360,12 @@ class CS2Reader:
         self._g  = offsets.get("globals", {})
         self._f  = offsets.get("fields",  {})
 
-        self.client_base   = 0
-        self.entity_system = 0
-        self.gvars         = 0
-        self.lpc_addr      = 0   # address of local player controller pointer
-        self._bomb_own_idx = 0   # persisted across frames (mirrors C++ m_bomb_idx)
+        self.client_base      = 0
+        self.entity_system    = 0
+        self.gvars            = 0
+        self.lpc_addr         = 0   # address of local player controller pointer
+        self._bomb_own_idx    = 0   # persisted across frames
+        self._last_local_team = 0   # last known valid team (2=T, 3=CT)
 
     def _off(self, cls: str, field: str, default: int = 0) -> int:
         return self._f.get(cls, {}).get(field, default)
@@ -523,13 +523,38 @@ class CS2Reader:
 
     # ── main collect loop ─────────────────────────────────────────────────────
     def collect(self) -> dict | None:
+        # Re-read entity_system every frame — CS2 can update this pointer
+        # during map loads or round resets.  Caching it in setup() causes all
+        # entity reads to silently return 0 if the pointer moves.
+        dw_list = self._g.get("dwEntityList", 0)
+        if dw_list:
+            es = self.mem.ptr(self.client_base + dw_list)
+            if es:
+                self.entity_system = es
+        if not self.entity_system:
+            return None
+
+        # Refresh global vars pointer for the same reason
+        dw_gvars = self._g.get("dwGlobalVars", 0)
+        if dw_gvars:
+            gv = self.mem.ptr(self.client_base + dw_gvars)
+            if gv:
+                self.gvars = gv
+
         lpc = self.mem.ptr(self.lpc_addr)
         if not lpc:
             return None
 
         off_team = self._off("C_BaseEntity", "m_iTeamNum")
         local_team = self.mem.u32(lpc + off_team) if off_team else 0
-        if local_team not in (2, 3):
+
+        # Keep broadcasting with the last known team during brief transitions
+        # (half-time swap, round restart) so the webapp doesn't freeze.
+        if local_team in (2, 3):
+            self._last_local_team = local_team
+        elif hasattr(self, "_last_local_team") and self._last_local_team:
+            local_team = self._last_local_team
+        else:
             return None
 
         map_name = self._get_map_name()
@@ -801,15 +826,170 @@ def _static_path() -> str | None:
     return None
 
 
-def _start_http(static_dir: str):
-    class _Silent(http.server.SimpleHTTPRequestHandler):
+def _maps_cache_path() -> Path:
+    """Writable directory where auto-extracted map data is stored."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "maps_cache"
+    return Path(__file__).parent.parent / "webapp" / "public" / "data"
+
+
+# ── map extractor ─────────────────────────────────────────────────────────────
+class MapExtractor:
+    """Reads CS2 overview files and extracts map data on demand."""
+
+    def __init__(self, cache_dir: Path):
+        self.cache_dir = cache_dir
+        self.cs2_dir   = self._find_cs2()
+        self._seen: set[str] = set()
+        if self.cs2_dir:
+            log.info("map extractor: CS2 found at %s", self.cs2_dir)
+        else:
+            log.warning("map extractor: CS2 install not found — auto-extraction disabled")
+
+    def _find_cs2(self) -> Path | None:
+        candidates = []
+        # 1. Steam registry (most reliable)
+        try:
+            import winreg
+            for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for sub in (r"SOFTWARE\Valve\Steam", r"SOFTWARE\WOW6432Node\Valve\Steam"):
+                    try:
+                        key = winreg.OpenKey(hive, sub)
+                        steam = Path(winreg.QueryValueEx(key, "InstallPath")[0])
+                        candidates.append(steam / "steamapps/common/Counter-Strike Global Offensive")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # 2. Common default locations
+        for drive in ("C", "D", "E"):
+            candidates += [
+                Path(f"{drive}:/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive"),
+                Path(f"{drive}:/Program Files/Steam/steamapps/common/Counter-Strike Global Offensive"),
+                Path(f"{drive}:/Steam/steamapps/common/Counter-Strike Global Offensive"),
+            ]
+        for p in candidates:
+            if (p / "game" / "csgo").exists():
+                return p
+        return None
+
+    def _parse_overview(self, txt: Path) -> dict | None:
+        """Extract pos_x, pos_y, scale from a CS2 KeyValues overview .txt file."""
+        import re
+        try:
+            content = txt.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return None
+        px = re.search(r'"pos_x"\s+"([^"]+)"', content)
+        py = re.search(r'"pos_y"\s+"([^"]+)"', content)
+        sc = re.search(r'"scale"\s+"([^"]+)"', content)
+        if not (px and py and sc):
+            return None
+        try:
+            return {"x": float(px.group(1)), "y": float(py.group(1)), "scale": float(sc.group(1))}
+        except ValueError:
+            return None
+
+    def ensure(self, map_name: str) -> bool:
+        """
+        Extract map data from CS2 if not already in cache.
+        Returns True if data is available (pre-existing or just extracted).
+        """
+        if map_name in self._seen or map_name == "invalid":
+            return map_name in self._seen
+
+        out = self.cache_dir / map_name
+        if (out / "data.json").exists() and (out / "radar.png").exists():
+            self._seen.add(map_name)
+            return True
+
+        if not self.cs2_dir:
+            return False
+
+        ov_dir  = self.cs2_dir / "game" / "csgo" / "resource" / "overviews"
+        txt_src = ov_dir / f"{map_name}.txt"
+        png_src = ov_dir / f"{map_name}_radar.png"
+
+        if not txt_src.exists():
+            log.warning("map extractor: no overview txt for %s at %s", map_name, txt_src)
+            return False
+        if not png_src.exists():
+            log.warning("map extractor: no radar png for %s at %s", map_name, png_src)
+            return False
+
+        data = self._parse_overview(txt_src)
+        if not data:
+            log.warning("map extractor: failed to parse overview for %s", map_name)
+            return False
+
+        import shutil
+        try:
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "data.json").write_text(json.dumps(data))
+            shutil.copy(png_src, out / "radar.png")
+            shutil.copy(png_src, out / "background.png")   # no blur — acceptable fallback
+            (out / "callouts.json").write_text(json.dumps({"map": map_name, "callouts": []}))
+        except Exception as exc:
+            log.error("map extractor: write failed for %s: %s", map_name, exc)
+            return False
+
+        log.info("map extractor: extracted %s  (x=%.0f y=%.0f scale=%.2f)",
+                 map_name, data["x"], data["y"], data["scale"])
+        self._seen.add(map_name)
+        return True
+
+
+def _start_http(static_dir: str, maps_cache: Path):
+    """
+    Serve the webapp with a dual-directory handler:
+      /data/<map>/* → maps_cache first, then static_dir fallback
+      everything else → static_dir
+    """
+    import posixpath, urllib.parse, mimetypes
+
+    _static = static_dir
+    _maps   = maps_cache
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_): pass
         def log_error(self, *_): pass
 
-    handler = functools.partial(_Silent, directory=static_dir)
-    srv = http.server.HTTPServer(("0.0.0.0", HTTP_PORT), handler)
+        def _resolve(self, url_path: str) -> Path | None:
+            p = urllib.parse.unquote(url_path).split("?")[0]
+            p = posixpath.normpath(p).lstrip("/")
+            parts = p.split("/")
+
+            # /data/<map>/... → check maps_cache first
+            if len(parts) >= 2 and parts[0] == "data":
+                candidate = _maps / Path(*parts[1:])
+                if candidate.exists() and candidate.is_file():
+                    return candidate
+
+            # fallback to static dir
+            candidate = Path(_static) / Path(*parts) if parts else Path(_static)
+            if candidate.is_file():
+                return candidate
+            # try index.html for SPA routes
+            index = Path(_static) / "index.html"
+            return index if index.exists() else None
+
+        def do_GET(self):
+            path = self._resolve(self.path)
+            if path is None or not path.exists():
+                self.send_error(404)
+                return
+            mime, _ = mimetypes.guess_type(str(path))
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mime or "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
+
+    srv = http.server.HTTPServer(("0.0.0.0", HTTP_PORT), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    log.info("HTTP  → http://0.0.0.0:%d", HTTP_PORT)
+    log.info("HTTP  → http://0.0.0.0:%d  (maps_cache=%s)", HTTP_PORT, _maps)
 
 
 def _ensure_firewall_rules():
@@ -871,9 +1051,13 @@ async def _run_async():
         log.info("WS    → ws://localhost:%d/cs2_webradar", WS_PORT)
 
         static_dir = _static_path()
+        maps_cache = _maps_cache_path()
+        extractor  = MapExtractor(maps_cache)
         if static_dir:
-            _start_http(static_dir)
+            _start_http(static_dir, maps_cache)
             webbrowser.open(f"http://localhost:{HTTP_PORT}")
+
+        _last_map = None
 
         while True:
             # ── ensure CS2 is open ────────────────────────────────────────────
@@ -913,6 +1097,10 @@ async def _run_async():
                         log.info("in CS2 but not in an active match (team=spectator/none)")
                         _last_waiting_log = now
                 else:
+                    map_name = data.get("m_map", "invalid")
+                    if map_name != _last_map and map_name != "invalid":
+                        _last_map = map_name
+                        await loop.run_in_executor(None, extractor.ensure, map_name)
                     await _broadcast(json.dumps(data))
             except OSError as exc:
                 log.warning("CS2 process lost (%s) — detaching", exc)
@@ -924,13 +1112,26 @@ async def _run_async():
             await asyncio.sleep(POLL_INTERVAL)
 
 
-def run(overlay: bool = False):
-    if overlay:
-        t = threading.Thread(target=lambda: asyncio.run(_run_async()), daemon=True, name="radar-backend")
+def run(overlay: bool = False, esp: bool = False):
+    mode = "esp" if esp else ("minimap" if overlay else "browser")
+    log.info("mode: %s", mode)
+
+    if overlay or esp:
+        t = threading.Thread(
+            target=lambda: asyncio.run(_run_async()),
+            daemon=True, name="radar-backend"
+        )
         t.start()
         time.sleep(1.5)
+
         import overlay as ov
-        ov.start(f"http://localhost:{HTTP_PORT}")
+        if esp:
+            # Full-screen transparent click-through — CS2 must be Fullscreen Windowed
+            ov.start_esp(f"http://localhost:{HTTP_PORT}?mode=esp")
+        else:
+            # Small draggable minimap window
+            ov.start(f"http://localhost:{HTTP_PORT}?mode=minimap")
+
         t.join()
     else:
         asyncio.run(_run_async())
@@ -940,7 +1141,8 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="CS2 Radar")
     ap.add_argument("--overlay", action="store_true",
-                    help="Full-screen ESP overlay on top of CS2 (borderless windowed required)")
+                    help="Small draggable minimap overlay window")
+    ap.add_argument("--esp", action="store_true",
+                    help="Full-screen transparent ESP overlay (Fullscreen Windowed required)")
     args = ap.parse_args()
-    log.info("cs2_radar starting  (overlay=%s)", args.overlay)
-    run(overlay=args.overlay)
+    run(overlay=args.overlay, esp=args.esp)

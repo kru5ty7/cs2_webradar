@@ -12,12 +12,11 @@ pip install pyinstaller websockets pywebview --quiet
 
 echo [3/3] Compiling exe...
 if exist build rmdir /s /q build
-if exist dist  rmdir /s /q dist
 
 pyinstaller radar.spec --noconfirm
 if errorlevel 1 ( echo Compile FAILED & pause & exit /b 1 )
 
 echo.
-echo Done — dist\GameOverlayService_v5.exe
+echo Done — dist\GameOverlayService_v8.exe
 echo Copy config.json next to the exe before running.
 pause

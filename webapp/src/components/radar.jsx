@@ -21,7 +21,7 @@ const Radar = ({
   const [radarImageEl, setRadarImageEl] = useState(undefined);
 
   return (
-    <div id="radar" className="relative overflow-hidden max-h-full aspect-square w-auto">
+    <div id="radar" className="relative overflow-hidden h-full aspect-square">
       <img ref={setRadarImageEl} className="w-full h-auto" src={radarImage} />
 
       <CalloutLayer
