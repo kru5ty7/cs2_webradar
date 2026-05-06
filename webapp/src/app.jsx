@@ -6,7 +6,6 @@ import Radar from "./components/Radar";
 import ESP from "./components/ESP";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
-import SettingsButton from "./components/SettingsButton";
 
 const CONNECTION_TIMEOUT = 5000;
 
@@ -54,38 +53,103 @@ const loadSettings = () => {
   return savedSettings ? JSON.parse(savedSettings) : DEFAULT_SETTINGS;
 };
 
+// ── Settings popup for overlay mode ──────────────────────────────────────────
+// Renders as a fixed full-window panel on top of everything — avoids all the
+// event-capture and z-index issues of nesting inside the drag bar.
+const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
+  const toggle = (key) => setSettings(s => ({ ...s, [key]: !s[key] }));
+  const BOMB_PRESETS = ["#ff4500","#ffdd00","#ffffff","#00cfff","#c90b0b"];
+
+  const Row = ({ label, settingKey }) => (
+    <label style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+      padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,0.05)", cursor:"pointer" }}>
+      <span style={{ color:"#8ab", fontSize:12 }}>{label}</span>
+      <input type="checkbox" checked={!!settings[settingKey]}
+        onChange={() => toggle(settingKey)}
+        style={{ width:16, height:16, cursor:"pointer", accentColor:"#4ade80" }} />
+    </label>
+  );
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:99999,
+      background:"rgba(7,18,28,0.97)",
+      display:"flex", flexDirection:"column",
+      padding:"10px 12px", overflowY:"auto",
+    }}>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <span style={{ color:"#b1d0e7", fontWeight:700, fontSize:13, letterSpacing:"0.05em" }}>
+          Settings
+        </span>
+        <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1 }}>×</span>
+      </div>
+
+      {/* Sliders */}
+      {[
+        { label:"Dot Size", key:"dotSize", min:0.5, max:2, step:0.1 },
+        { label:"Bomb Size", key:"bombSize", min:0.1, max:2, step:0.1 },
+      ].map(({ label, key, min, max, step }) => (
+        <div key={key} style={{ marginBottom:8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+            <span style={{ color:"#8ab", fontSize:12 }}>{label}</span>
+            <span style={{ color:"#b1d0e7", fontSize:12, fontFamily:"monospace" }}>{settings[key]}x</span>
+          </div>
+          <input type="range" min={min} max={max} step={step} value={settings[key]}
+            onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
+            style={{ width:"100%", accentColor:"#4ade80" }} />
+        </div>
+      ))}
+
+      {/* Toggles */}
+      <Row label="Ally Names"    settingKey="showAllNames" />
+      <Row label="Enemy Names"   settingKey="showEnemyNames" />
+      <Row label="View Cones"    settingKey="showViewCones" />
+      <Row label="Smoke"         settingKey="showSmoke" />
+      <Row label="Molotov"       settingKey="showMolly" />
+      <Row label="Flash"         settingKey="showFlash" />
+      <Row label="Callouts"      settingKey="showCallouts" />
+      <Row label="Death Cross"   settingKey="showDeathCross" />
+      <Row label="Bomb Pulse"    settingKey="bombHighlight" />
+
+      {/* Bomb color */}
+      <div style={{ marginTop:8 }}>
+        <span style={{ color:"#8ab", fontSize:12, display:"block", marginBottom:6 }}>Bomb Color</span>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+          {BOMB_PRESETS.map(c => (
+            <div key={c} onClick={() => setSettings(s => ({ ...s, bombColor:c }))}
+              style={{ width:20, height:20, borderRadius:"50%", background:c, cursor:"pointer",
+                border: settings.bombColor===c ? "2px solid #fff" : "2px solid transparent" }} />
+          ))}
+          <input type="color" value={settings.bombColor ?? "#ff4500"}
+            onChange={e => setSettings(s => ({ ...s, bombColor:e.target.value }))}
+            style={{ width:20, height:20, padding:0, border:"none", borderRadius:"50%",
+              cursor:"pointer", background:"none" }} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Drag bar for overlay mode ─────────────────────────────────────────────────
-// Mousedown tracks pointer movement and calls pywebview.api.move() each frame,
-// which tells the Python overlay to reposition the Win32 window.
-const DragBar = ({ bombData, settings, setSettings }) => {
+const DragBar = ({ bombData, onSettingsClick }) => {
   const onMouseDown = (e) => {
     if (e.button !== 0) return;
     const api = window.pywebview?.api;
     if (!api) return;
 
-    // Capture where on the bar the user clicked (offset within the window)
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    // We need the current window position — ask Win32 via the API
-    // For simplicity: track cumulative delta from a stored origin
     let originX = null;
     let originY = null;
 
     const onMove = async (me) => {
       if (originX === null) {
-        // First move — fetch current window screen position from Python
         try {
           const pos = await api.get_position?.();
           originX = pos ? pos[0] : 10;
           originY = pos ? pos[1] : 10;
-        } catch {
-          originX = 10; originY = 10;
-        }
+        } catch { originX = 10; originY = 10; }
       }
-      const dx = me.screenX - e.screenX;
-      const dy = me.screenY - e.screenY;
-      api.move(originX + dx, originY + dy);
+      api.move(originX + (me.screenX - e.screenX), originY + (me.screenY - e.screenY));
     };
 
     const onUp = () => {
@@ -100,53 +164,38 @@ const DragBar = ({ bombData, settings, setSettings }) => {
   const hasBomb = bombData && bombData.m_blow_time > 0 && !bombData.m_is_defused;
 
   return (
-    <div
-      onMouseDown={onMouseDown}
-      style={{
-        height: 22,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 8px",
-        cursor: "grab",
-        flexShrink: 0,
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
-      }}
-    >
-      {/* Left: label */}
-      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, letterSpacing: "0.1em" }}>
+    <div onMouseDown={onMouseDown} style={{
+      height: 24, background:"rgba(0,0,0,0.6)",
+      display:"flex", alignItems:"center", justifyContent:"space-between",
+      padding:"0 8px", cursor:"grab", flexShrink:0,
+      borderBottom:"1px solid rgba(255,255,255,0.08)",
+    }}>
+      <span style={{ color:"rgba(255,255,255,0.45)", fontSize:10, letterSpacing:"0.1em" }}>
         CS2 RADAR
       </span>
 
-      {/* Centre: bomb timer if active */}
       {hasBomb && (
-        <span style={{
-          color: bombData.m_is_defusing ? "#4fc" : "#f84",
-          fontSize: 11, fontFamily: "monospace", fontWeight: 700,
-        }}>
+        <span style={{ color:bombData.m_is_defusing?"#4fc":"#f84",
+          fontSize:11, fontFamily:"monospace", fontWeight:700 }}>
           {bombData.m_blow_time.toFixed(1)}s
           {bombData.m_is_defusing && ` (${bombData.m_defuse_time.toFixed(1)}s)`}
         </span>
       )}
 
-      {/* Right: settings + close */}
-      <div
-        onMouseDown={e => e.stopPropagation()}
-        style={{ display: "flex", alignItems: "center", gap: 6 }}
-      >
-        {settings && setSettings && (
-          <div style={{ transform: "scale(0.8)", transformOrigin: "right center" }}>
-            <SettingsButton settings={settings} onSettingsChange={setSettings} />
-          </div>
-        )}
-        <span
-          onMouseDown={(e) => { e.stopPropagation(); window.pywebview?.api?.close(); }}
-          style={{
-            color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1,
-            cursor: "pointer", padding: "0 2px",
-          }}
-          onMouseEnter={e => e.target.style.color = "#f55"}
-          onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.4)"}
-        >
+      <div onMouseDown={e => e.stopPropagation()}
+        style={{ display:"flex", alignItems:"center", gap:8 }}>
+        {/* Settings gear */}
+        <span onClick={onSettingsClick} title="Settings"
+          style={{ color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", lineHeight:1 }}
+          onMouseEnter={e => e.target.style.color="#fff"}
+          onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.5)"}>
+          ⚙
+        </span>
+        {/* Close */}
+        <span onClick={() => window.pywebview?.api?.close()}
+          style={{ color:"rgba(255,255,255,0.4)", fontSize:14, cursor:"pointer", lineHeight:1 }}
+          onMouseEnter={e => e.target.style.color="#f55"}
+          onMouseLeave={e => e.target.style.color="rgba(255,255,255,0.4)"}>
           ×
         </span>
       </div>
@@ -164,7 +213,8 @@ const App = () => {
   const [dropped, setDropped]   = useState([]);
   const [settings, setSettings] = useState(loadSettings());
   const [viewMatrix, setViewMatrix] = useState([]);
-  const [bannerOpened, setBannerOpened] = useState(true)
+  const [bannerOpened, setBannerOpened] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Save settings to local storage whenever they change
   useEffect(() => {
@@ -293,10 +343,20 @@ const App = () => {
         borderRadius: 6,
         overflow: "hidden",
         userSelect: "none",
+        position: "relative",
       }}>
 
+        {/* Settings popup — renders over everything when open */}
+        {settingsOpen && (
+          <OverlaySettingsPopup
+            settings={settings}
+            setSettings={setSettings}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+
         {/* ── Drag bar ── */}
-        <DragBar bombData={bombData} settings={settings} setSettings={setSettings} />
+        <DragBar bombData={bombData} onSettingsClick={() => setSettingsOpen(o => !o)} />
 
         {/* ── Radar ── */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
