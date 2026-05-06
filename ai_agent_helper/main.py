@@ -1137,12 +1137,54 @@ def run(overlay: bool = False, esp: bool = False):
         asyncio.run(_run_async())
 
 
+def _pick_mode() -> tuple[bool, bool]:
+    """
+    Interactive mode selector shown at startup when no CLI flag is passed.
+    Returns (overlay, esp).
+    """
+    print("\n" + "=" * 50)
+    print("  CS2 Radar — Select Mode")
+    print("=" * 50)
+    print("  1  Normal  — browser radar (open in any browser)")
+    print("  2  Overlay — small draggable minimap on screen")
+    print("  3  ESP     — full-screen player boxes through walls")
+    print("=" * 50)
+
+    while True:
+        try:
+            choice = input("  Enter 1 / 2 / 3: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = "1"
+
+        if choice == "1":
+            print("  → Normal mode\n")
+            return False, False
+        elif choice == "2":
+            print("  → Minimap overlay  (drag the bar to reposition)\n")
+            return True, False
+        elif choice == "3":
+            print("  → ESP overlay  (CS2 must be in Fullscreen Windowed)\n")
+            return False, True
+        else:
+            print("  Please enter 1, 2, or 3.")
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="CS2 Radar")
-    ap.add_argument("--overlay", action="store_true",
-                    help="Small draggable minimap overlay window")
-    ap.add_argument("--esp", action="store_true",
-                    help="Full-screen transparent ESP overlay (Fullscreen Windowed required)")
+    ap.add_argument("--normal",  action="store_true", help="Browser radar mode (default)")
+    ap.add_argument("--overlay", action="store_true", help="Small draggable minimap overlay")
+    ap.add_argument("--esp",     action="store_true", help="Full-screen ESP overlay")
     args = ap.parse_args()
-    run(overlay=args.overlay, esp=args.esp)
+
+    if args.esp:
+        _overlay, _esp = False, True
+    elif args.overlay:
+        _overlay, _esp = True, False
+    elif args.normal:
+        _overlay, _esp = False, False
+    else:
+        # No flag passed — show interactive menu
+        _overlay, _esp = _pick_mode()
+
+    run(overlay=_overlay, esp=_esp)

@@ -17,6 +17,6 @@ pyinstaller radar.spec --noconfirm
 if errorlevel 1 ( echo Compile FAILED & pause & exit /b 1 )
 
 echo.
-echo Done — dist\GameOverlayService_v8.exe
+echo Done — dist\GameOverlayService_v10.exe
 echo Copy config.json next to the exe before running.
 pause
