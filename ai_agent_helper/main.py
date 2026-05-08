@@ -31,7 +31,7 @@ CACHE_FILE  = ROOT / "offsets_cache.json"
 LOG_FILE    = ROOT / "radar.log"
 
 WS_PORT       = 22006
-HTTP_PORT     = 8765   # built-dist server (overlay/exe); Vite dev server uses 5173
+HTTP_PORT     = 5173   # built-dist server; same port as Vite so URLs always match
 POLL_INTERVAL = 0.033  # ~30 Hz
 CACHE_MAX_AGE = 3600
 DUMPER_BASE   = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output"
@@ -1060,9 +1060,9 @@ async def _run_async():
         if static_dir:
             try:
                 _start_http(static_dir, maps_cache)
-                webbrowser.open(f"http://localhost:{HTTP_PORT}")
             except OSError as e:
-                log.warning("HTTP server could not start on port %d (%s) — overlay will use Vite dev server", HTTP_PORT, e)
+                log.warning("HTTP server could not start on port %d (%s) — Vite dev server already running there", HTTP_PORT, e)
+            webbrowser.open(f"http://localhost:{HTTP_PORT}")
 
         _last_map = None
 
