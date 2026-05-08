@@ -27,7 +27,11 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   const radarImageBounding = (radarImage !== undefined &&
     radarImage.getBoundingClientRect()) || { width: 0, height: 0 };
 
-  const scaledSize = 1.0 * settings.dotSize;
+  // Size relative to radar image width so it looks right in both browser and small overlay.
+  // Falls back to 8px until the image element is measured.
+  const radarW = radarImageBounding.width > 0 ? radarImageBounding.width : 0;
+  const baseSize = radarW > 0 ? radarW * 0.025 : 8;
+  const scaledSize = baseSize * (settings.dotSize ?? 1);
 
   // Store the last known position when the player dies
   useEffect(() => {
@@ -56,8 +60,8 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
       className={`absolute origin-center rounded-[100%] left-0 top-0`}
       ref={playerRef}
       style={{
-        width: `${scaledSize}vw`,
-        height: `${scaledSize}vw`,
+        width: `${scaledSize}px`,
+        height: `${scaledSize}px`,
         transform: `translate(${radarImageTranslation.x}px, ${radarImageTranslation.y}px)`,
         transition: `transform ${averageLatency}ms linear`,
         zIndex: `${(playerData.m_is_dead && `0`) || `1`}`,
@@ -78,8 +82,8 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
       <div
         style={{
           transform: `rotate(${(playerData.m_is_dead && `0`) || playerRotation}deg)`,
-          width: `${scaledSize}vw`,
-          height: `${scaledSize}vw`,
+          width: `${scaledSize}px`,
+          height: `${scaledSize}px`,
           transition: `transform ${averageLatency}ms linear`,
           opacity: `${(playerData.m_is_dead && `0.8`) || (invalidPosition && `0`) || `1`}`,
         }}
@@ -98,8 +102,11 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
         {/* View cone (kept exactly as it was) */}
         {settings.showViewCones && !playerData.m_is_dead && (
           <div
-            className="absolute left-1/2 top-1/2 w-[1.5vw] h-[3vw] bg-white opacity-30"
+            className="absolute bg-white opacity-30"
             style={{
+              left: "50%", top: "50%",
+              width: `${scaledSize * 1.5}px`,
+              height: `${scaledSize * 3}px`,
               transform: `translate(-50%, 5%) rotate(0deg)`,
               clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
             }}

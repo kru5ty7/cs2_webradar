@@ -31,8 +31,8 @@ CACHE_FILE  = ROOT / "offsets_cache.json"
 LOG_FILE    = ROOT / "radar.log"
 
 WS_PORT       = 22006
-HTTP_PORT     = 5173
-POLL_INTERVAL = 0.1    # 10 Hz
+HTTP_PORT     = 8765   # built-dist server (overlay/exe); Vite dev server uses 5173
+POLL_INTERVAL = 0.033  # ~30 Hz
 CACHE_MAX_AGE = 3600
 DUMPER_BASE   = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output"
 
@@ -61,6 +61,7 @@ def _setup_logging() -> logging.Logger:
             record.levelname = f"{colour}{record.levelname:<8}{_RESET}"
             return super().format(record)
 
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(logging.DEBUG)
     console.setFormatter(_ColouredFormatter(
@@ -310,7 +311,7 @@ def load_offsets() -> dict:
             "fields":  _parse_fields(raw_client),
         }
         CACHE_FILE.write_text(json.dumps(result, indent=2))
-        log.info("offsets fetched and cached → %s", CACHE_FILE.name)
+        log.info("offsets fetched and cached -> %s", CACHE_FILE.name)
         return result
 
     except Exception as exc:
@@ -388,12 +389,14 @@ class CS2Reader:
         log.debug("dwEntityList=0x%X  dwGlobalVars=0x%X  dwLocalPlayerController=0x%X",
                   dw_list, dw_gvars, dw_lpc)
 
+        raw_list = self.mem._read(self.client_base + dw_list, 8)
         self.entity_system = self.mem.ptr(self.client_base + dw_list)
         self.gvars         = self.mem.ptr(self.client_base + dw_gvars)
         self.lpc_addr      = self.client_base + dw_lpc
 
         if not self.entity_system:
-            log.warning("entity system ptr is null — CS2 may be in main menu, retrying...")
+            log.warning("entity system ptr is null (raw bytes @ dwEntityList: %s) — CS2 may be in main menu or offsets are stale",
+                        raw_list.hex())
             return False
 
         log.info("client.dll    @ 0x%016X", self.client_base)
@@ -989,7 +992,7 @@ def _start_http(static_dir: str, maps_cache: Path):
 
     srv = http.server.HTTPServer(("0.0.0.0", HTTP_PORT), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    log.info("HTTP  → http://0.0.0.0:%d  (maps_cache=%s)", HTTP_PORT, _maps)
+    log.info("HTTP  -> http://0.0.0.0:%d  (maps_cache=%s)", HTTP_PORT, _maps)
 
 
 def _ensure_firewall_rules():
@@ -1031,7 +1034,7 @@ def _ensure_firewall_rules():
             f"localport={port}", "enable=yes",
         )
         if ok:
-            log.info("firewall: port rule added  %s → %d", rule_name, port)
+            log.info("firewall: port rule added  %s -> %d", rule_name, port)
         else:
             log.warning("firewall: port rule failed %s: %s", rule_name, out)
 
@@ -1047,17 +1050,23 @@ async def _run_async():
     _last_waiting_log = 0.0
     loop = asyncio.get_event_loop()
 
-    async with websockets.serve(_ws_handler, "0.0.0.0", WS_PORT):
-        log.info("WS    → ws://localhost:%d/cs2_webradar", WS_PORT)
+    # host=None → bind all interfaces (IPv4 + IPv6) so WebView2's ::1 also works
+    async with websockets.serve(_ws_handler, None, WS_PORT):
+        log.info("WS    -> ws://localhost:%d/cs2_webradar", WS_PORT)
 
         static_dir = _static_path()
         maps_cache = _maps_cache_path()
         extractor  = MapExtractor(maps_cache)
         if static_dir:
-            _start_http(static_dir, maps_cache)
-            webbrowser.open(f"http://localhost:{HTTP_PORT}")
+            try:
+                _start_http(static_dir, maps_cache)
+                webbrowser.open(f"http://localhost:{HTTP_PORT}")
+            except OSError as e:
+                log.warning("HTTP server could not start on port %d (%s) — overlay will use Vite dev server", HTTP_PORT, e)
 
         _last_map = None
+
+        _setup_failures = 0
 
         while True:
             # ── ensure CS2 is open ────────────────────────────────────────────
@@ -1073,18 +1082,33 @@ async def _run_async():
                     continue
                 log.info("found cs2.exe  pid=%d", pid)
                 reader = None
+                _setup_failures = 0
+
+            # ── detect stale handle (CS2 restarted without triggering OSError) ─
+            # After several consecutive setup failures, verify the process is
+            # still alive. ReadProcessMemory on a dead handle returns zeros
+            # silently, which looks identical to "entity system not ready".
+            if reader is None and _setup_failures > 0 and _setup_failures % 10 == 0:
+                live_pid = await loop.run_in_executor(None, lambda: mem.find_pid("cs2.exe"))
+                if live_pid and live_pid != mem.pid:
+                    log.warning("CS2 restarted (old pid=%d new pid=%d) — reopening handle",
+                                mem.pid, live_pid)
+                    mem.close()
+                    continue   # re-enter loop to reopen handle
 
             # ── ensure reader is initialised ──────────────────────────────────
             if reader is None:
                 r = CS2Reader(mem, offsets)
                 ok = await loop.run_in_executor(None, r.setup)
                 if not ok:
+                    _setup_failures += 1
                     now = time.time()
                     if now - _last_waiting_log >= 5:
                         log.info("waiting for CS2 to load into a game...")
                         _last_waiting_log = now
                     await asyncio.sleep(1)
                     continue
+                _setup_failures = 0
                 reader = r
                 log.info("reader ready — watching entity list at 10 Hz")
 
@@ -1117,6 +1141,13 @@ def run(overlay: bool = False, esp: bool = False):
     log.info("mode: %s", mode)
 
     if overlay or esp:
+        # Use the built dist (port 8765) when available; otherwise fall back to
+        # the Vite dev server (port 5173) so development runs without a build step.
+        base_url = (f"http://localhost:{HTTP_PORT}"
+                    if _static_path() is not None
+                    else "http://localhost:5173")
+        log.info("overlay will load from %s", base_url)
+
         t = threading.Thread(
             target=lambda: asyncio.run(_run_async()),
             daemon=True, name="radar-backend"
@@ -1127,10 +1158,10 @@ def run(overlay: bool = False, esp: bool = False):
         import overlay as ov
         if esp:
             # Full-screen transparent click-through — CS2 must be Fullscreen Windowed
-            ov.start_esp(f"http://localhost:{HTTP_PORT}?mode=esp")
+            ov.start_esp(f"{base_url}?mode=esp")
         else:
             # Small draggable minimap window
-            ov.start(f"http://localhost:{HTTP_PORT}?mode=minimap")
+            ov.start(f"{base_url}?mode=minimap")
 
         t.join()
     else:
@@ -1157,13 +1188,13 @@ def _pick_mode() -> tuple[bool, bool]:
             choice = "1"
 
         if choice == "1":
-            print("  → Normal mode\n")
+            print("  -> Normal mode\n")
             return False, False
         elif choice == "2":
-            print("  → Minimap overlay  (drag the bar to reposition)\n")
+            print("  -> Minimap overlay  (drag the bar to reposition)\n")
             return True, False
         elif choice == "3":
-            print("  → ESP overlay  (CS2 must be in Fullscreen Windowed)\n")
+            print("  -> ESP overlay  (CS2 must be in Fullscreen Windowed)\n")
             return False, True
         else:
             print("  Please enter 1, 2, or 3.")

@@ -7,8 +7,6 @@ import ESP from "./components/ESP";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
 
-const CONNECTION_TIMEOUT = 5000;
-
 /* change this to '1' if you want to use offline (your own pc only) */
 const USE_LOCALHOST = 0;
 
@@ -54,25 +52,38 @@ const loadSettings = () => {
 };
 
 // ── Settings popup for overlay mode ──────────────────────────────────────────
-// Renders as a fixed full-window panel on top of everything — avoids all the
-// event-capture and z-index issues of nesting inside the drag bar.
+// Custom toggle — no <input type="checkbox"> to avoid React controlled-input
+// fighting in WebView2. Plain div with onClick, visual state driven by `checked`.
+const SettingRow = ({ label, checked, onToggle }) => (
+  <div onClick={onToggle} style={{
+    display:"flex", justifyContent:"space-between", alignItems:"center",
+    padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,0.05)",
+    cursor:"pointer", userSelect:"none",
+  }}>
+    <span style={{ color:"#8ab", fontSize:12 }}>{label}</span>
+    <div style={{
+      width:28, height:16, borderRadius:8, flexShrink:0,
+      background: checked ? "#4ade80" : "rgba(255,255,255,0.18)",
+      position:"relative", transition:"background 0.15s",
+    }}>
+      <div style={{
+        position:"absolute", width:12, height:12, borderRadius:"50%",
+        background:"#fff", top:2, transition:"left 0.15s",
+        left: checked ? 14 : 2,
+      }} />
+    </div>
+  </div>
+);
+
+const BOMB_PRESETS = ["#ff4500","#ffdd00","#ffffff","#00cfff","#c90b0b"];
+
 const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
   const toggle = (key) => setSettings(s => ({ ...s, [key]: !s[key] }));
-  const BOMB_PRESETS = ["#ff4500","#ffdd00","#ffffff","#00cfff","#c90b0b"];
-
-  const Row = ({ label, settingKey }) => (
-    <label style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-      padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,0.05)", cursor:"pointer" }}>
-      <span style={{ color:"#8ab", fontSize:12 }}>{label}</span>
-      <input type="checkbox" checked={!!settings[settingKey]}
-        onChange={() => toggle(settingKey)}
-        style={{ width:16, height:16, cursor:"pointer", accentColor:"#4ade80" }} />
-    </label>
-  );
+  const setVal  = (key, val) => setSettings(s => ({ ...s, [key]: val }));
 
   return (
     <div style={{
-      position:"fixed", inset:0, zIndex:99999,
+      position:"absolute", inset:0, zIndex:99999,
       background:"rgba(7,18,28,0.97)",
       display:"flex", flexDirection:"column",
       padding:"10px 12px", overflowY:"auto",
@@ -82,47 +93,54 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
         <span style={{ color:"#b1d0e7", fontWeight:700, fontSize:13, letterSpacing:"0.05em" }}>
           Settings
         </span>
-        <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1 }}>×</span>
+        <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</span>
       </div>
 
-      {/* Sliders */}
+      {/* Sliders — uncontrolled (defaultValue) + onInput for live updates */}
       {[
-        { label:"Dot Size", key:"dotSize", min:0.5, max:2, step:0.1 },
-        { label:"Bomb Size", key:"bombSize", min:0.1, max:2, step:0.1 },
+        { label:"Dot Size",  key:"dotSize",  min:0.5, max:2,   step:0.1 },
+        { label:"Bomb Size", key:"bombSize", min:0.1, max:2,   step:0.1 },
       ].map(({ label, key, min, max, step }) => (
         <div key={key} style={{ marginBottom:8 }}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
             <span style={{ color:"#8ab", fontSize:12 }}>{label}</span>
-            <span style={{ color:"#b1d0e7", fontSize:12, fontFamily:"monospace" }}>{settings[key]}x</span>
+            <span id={`lbl-${key}`} style={{ color:"#b1d0e7", fontSize:12, fontFamily:"monospace" }}>
+              {(settings[key] ?? 1).toFixed(1)}x
+            </span>
           </div>
-          <input type="range" min={min} max={max} step={step} value={settings[key]}
-            onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
-            style={{ width:"100%", accentColor:"#4ade80" }} />
+          <input type="range" min={min} max={max} step={step}
+            defaultValue={settings[key]}
+            onInput={e => {
+              const v = parseFloat(e.target.value);
+              document.getElementById(`lbl-${key}`).textContent = v.toFixed(1) + "x";
+              setVal(key, v);
+            }}
+            style={{ width:"100%", accentColor:"#4ade80", cursor:"pointer" }} />
         </div>
       ))}
 
       {/* Toggles */}
-      <Row label="Ally Names"    settingKey="showAllNames" />
-      <Row label="Enemy Names"   settingKey="showEnemyNames" />
-      <Row label="View Cones"    settingKey="showViewCones" />
-      <Row label="Smoke"         settingKey="showSmoke" />
-      <Row label="Molotov"       settingKey="showMolly" />
-      <Row label="Flash"         settingKey="showFlash" />
-      <Row label="Callouts"      settingKey="showCallouts" />
-      <Row label="Death Cross"   settingKey="showDeathCross" />
-      <Row label="Bomb Pulse"    settingKey="bombHighlight" />
+      <SettingRow label="Ally Names"  checked={!!settings.showAllNames}   onToggle={() => toggle("showAllNames")} />
+      <SettingRow label="Enemy Names" checked={!!settings.showEnemyNames} onToggle={() => toggle("showEnemyNames")} />
+      <SettingRow label="View Cones"  checked={!!settings.showViewCones}  onToggle={() => toggle("showViewCones")} />
+      <SettingRow label="Smoke"       checked={!!settings.showSmoke}      onToggle={() => toggle("showSmoke")} />
+      <SettingRow label="Molotov"     checked={!!settings.showMolly}      onToggle={() => toggle("showMolly")} />
+      <SettingRow label="Flash"       checked={!!settings.showFlash}      onToggle={() => toggle("showFlash")} />
+      <SettingRow label="Callouts"    checked={!!settings.showCallouts}   onToggle={() => toggle("showCallouts")} />
+      <SettingRow label="Death Cross" checked={!!settings.showDeathCross} onToggle={() => toggle("showDeathCross")} />
+      <SettingRow label="Bomb Pulse"  checked={!!settings.bombHighlight}  onToggle={() => toggle("bombHighlight")} />
 
       {/* Bomb color */}
       <div style={{ marginTop:8 }}>
         <span style={{ color:"#8ab", fontSize:12, display:"block", marginBottom:6 }}>Bomb Color</span>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
           {BOMB_PRESETS.map(c => (
-            <div key={c} onClick={() => setSettings(s => ({ ...s, bombColor:c }))}
+            <div key={c} onClick={() => setVal("bombColor", c)}
               style={{ width:20, height:20, borderRadius:"50%", background:c, cursor:"pointer",
                 border: settings.bombColor===c ? "2px solid #fff" : "2px solid transparent" }} />
           ))}
-          <input type="color" value={settings.bombColor ?? "#ff4500"}
-            onChange={e => setSettings(s => ({ ...s, bombColor:e.target.value }))}
+          <input type="color" defaultValue={settings.bombColor ?? "#ff4500"}
+            onInput={e => setVal("bombColor", e.target.value)}
             style={{ width:20, height:20, padding:0, border:"none", borderRadius:"50%",
               cursor:"pointer", background:"none" }} />
         </div>
@@ -222,55 +240,36 @@ const App = () => {
   }, [settings]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      let webSocket = null;
-      let webSocketURL = null;
-      let connectionTimeout = null;
+    const wsUrl = NGROK_WS_URL
+      || (USE_LOCALHOST
+          ? `ws://localhost:${PORT}/cs2_webradar`
+          : `ws://${EFFECTIVE_IP}:${PORT}/cs2_webradar`);
 
-      if (!webSocket) {
-        try {
-          if (NGROK_WS_URL) {
-            webSocketURL = NGROK_WS_URL;
-          } else if (USE_LOCALHOST) {
-            webSocketURL = `ws://localhost:${PORT}/cs2_webradar`;
-          } else {
-            webSocketURL = `ws://${EFFECTIVE_IP}:${PORT}/cs2_webradar`;
-          }
+    let ws = null;
+    let retryTimer = null;
+    let alive = true;
 
-          if (!webSocketURL) return;
-          webSocket = new WebSocket(webSocketURL);
-        } catch (error) {
-          document.getElementsByClassName(
-            "radar_message"
-          )[0].textContent = `${error}`;
-        }
+    const connect = () => {
+      if (!alive) return;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        console.error("WS init failed:", e);
+        retryTimer = setTimeout(connect, 3000);
+        return;
       }
 
-      connectionTimeout = setTimeout(() => {
-        webSocket.close();
-      }, CONNECTION_TIMEOUT);
+      ws.onopen = () => console.info("WS connected →", wsUrl);
 
-      webSocket.onopen = async () => {
-        clearTimeout(connectionTimeout);
-        console.info("connected to the web socket");
+      ws.onclose = () => {
+        console.warn("WS closed — retrying in 3 s");
+        if (alive) retryTimer = setTimeout(connect, 3000);
       };
 
-      webSocket.onclose = async () => {
-        clearTimeout(connectionTimeout);
-        console.error("disconnected from the web socket");
-      };
+      ws.onerror = (e) => console.error("WS error", e);
 
-      webSocket.onerror = async (error) => {
-        clearTimeout(connectionTimeout);
-        document.getElementsByClassName(
-          "radar_message"
-        )[0].textContent = `WebSocket connection to '${webSocketURL}' failed. Please check the IP address and try again`;
-        console.error(error);
-      };
-
-      webSocket.onmessage = async (event) => {
+      ws.onmessage = async (event) => {
         setAverageLatency(getLatency());
-
         const raw = typeof event.data === "string" ? event.data : await event.data.text();
         const parsedData = JSON.parse(raw);
         setPlayerArray(parsedData.m_players);
@@ -299,7 +298,12 @@ const App = () => {
       };
     };
 
-    fetchData();
+    connect();
+    return () => {
+      alive = false;
+      clearTimeout(retryTimer);
+      ws?.close();
+    };
   }, []);
 
   // ── ESP mode — full-screen transparent, click-through ────────────────────
@@ -370,7 +374,7 @@ const App = () => {
               bombData={bombData}
               grenades={grenades}
               dropped={dropped}
-              settings={{ ...settings, showCallouts: true, showViewCones: true }}
+              settings={settings}
             />
           ) : (
             <div style={{

@@ -1,7 +1,28 @@
 import { useState } from "react";
 
+const Toggle = ({ checked, onToggle, label }) => (
+  <div
+    onClick={onToggle}
+    className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer select-none"
+  >
+    <span className="text-radar-secondary text-sm">{label}</span>
+    <div style={{
+      width: 36, height: 20, borderRadius: 10, flexShrink: 0,
+      background: checked ? "#4ade80" : "rgba(255,255,255,0.18)",
+      position: "relative", transition: "background 0.15s",
+    }}>
+      <div style={{
+        position: "absolute", width: 14, height: 14, borderRadius: "50%",
+        background: "#fff", top: 3, transition: "left 0.15s",
+        left: checked ? 19 : 3,
+      }} />
+    </div>
+  </div>
+);
+
 const SettingsButton = ({ settings, onSettingsChange }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const toggle = (key) => onSettingsChange({ ...settings, [key]: !settings[key] });
 
   return (
     <div className="z-50">
@@ -9,144 +30,65 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 transition-all rounded-xl"
       >
-        <img className={`w-[1.3rem]`} src={`./assets/icons/cog.svg`} />
+        <img className="w-[1.3rem]" src="./assets/icons/cog.svg" />
         <span className="text-radar-primary">Settings</span>
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20 max-h-[80vh] overflow-y-auto"
-          style={{ zIndex: 9999 }}>
+        <div
+          className="absolute right-0 mt-2 w-64 bg-radar-panel/90 backdrop-blur-lg rounded-xl p-4 shadow-xl border border-radar-secondary/20 max-h-[80vh] overflow-y-auto"
+          style={{ zIndex: 9999 }}
+        >
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
           <div className="space-y-3">
+            {/* Dot size */}
             <div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-radar-secondary text-sm">Dot Size</span>
-                <span className="text-radar-primary text-sm font-mono">{settings.dotSize}x</span>
+                <span id="lbl-dotSize" className="text-radar-primary text-sm font-mono">{settings.dotSize}x</span>
               </div>
               <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={settings.dotSize}
-                onChange={(e) => onSettingsChange({ ...settings, dotSize: parseFloat(e.target.value) })}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-radar-primary"
-                style={{
-                  background: `linear-gradient(to right, #b1d0e7 ${((settings.dotSize - 0.5) / 1.5) * 100}%, rgba(59, 130, 246, 0.2) ${((settings.dotSize - 0.5) / 1.5) * 100}%)`
+                type="range" min="0.5" max="2" step="0.1"
+                defaultValue={settings.dotSize}
+                onInput={e => {
+                  const v = parseFloat(e.target.value);
+                  document.getElementById("lbl-dotSize").textContent = v.toFixed(1) + "x";
+                  onSettingsChange({ ...settings, dotSize: v });
                 }}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-radar-primary"
               />
             </div>
 
+            {/* Bomb size */}
             <div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-radar-secondary text-sm">Bomb Size</span>
-                <span className="text-radar-primary text-sm font-mono">{settings.bombSize}x</span>
+                <span id="lbl-bombSize" className="text-radar-primary text-sm font-mono">{settings.bombSize}x</span>
               </div>
               <input
-                type="range"
-                min="0.1"
-                max="2"
-                step="0.1"
-                value={settings.bombSize}
-                onChange={(e) => onSettingsChange({ ...settings, bombSize: parseFloat(e.target.value) })}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-radar-primary"
-                style={{
-                  background: `linear-gradient(to right, #b1d0e7 ${((settings.bombSize - 0.1) / 1.9) * 100}%, rgba(59, 130, 246, 0.2) ${((settings.bombSize - 0.1) / 1.9) * 100}%)`
+                type="range" min="0.1" max="2" step="0.1"
+                defaultValue={settings.bombSize}
+                onInput={e => {
+                  const v = parseFloat(e.target.value);
+                  document.getElementById("lbl-bombSize").textContent = v.toFixed(1) + "x";
+                  onSettingsChange({ ...settings, bombSize: v });
                 }}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-radar-primary"
               />
             </div>
 
+            {/* Toggles */}
             <div className="space-y-1">
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">Ally Names</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showAllNames}
-                  onChange={(e) => onSettingsChange({ ...settings, showAllNames: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">Enemy Names</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showEnemyNames}
-                  onChange={(e) => onSettingsChange({ ...settings, showEnemyNames: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">View Cones</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showViewCones}
-                  onChange={(e) => onSettingsChange({ ...settings, showViewCones: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">💨 Smoke</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showSmoke}
-                  onChange={(e) => onSettingsChange({ ...settings, showSmoke: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">🔥 Molly</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showMolly}
-                  onChange={(e) => onSettingsChange({ ...settings, showMolly: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">⚡ Flash</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showFlash}
-                  onChange={(e) => onSettingsChange({ ...settings, showFlash: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">Map Callouts</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showCallouts ?? true}
-                  onChange={(e) => onSettingsChange({ ...settings, showCallouts: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">Death Cross</span>
-                <input
-                  type="checkbox"
-                  checked={settings.showDeathCross ?? true}
-                  onChange={(e) => onSettingsChange({ ...settings, showDeathCross: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg hover:bg-radar-secondary/20 transition-colors cursor-pointer">
-                <span className="text-radar-secondary text-sm">Bomb Pulse</span>
-                <input
-                  type="checkbox"
-                  checked={settings.bombHighlight ?? true}
-                  onChange={(e) => onSettingsChange({ ...settings, bombHighlight: e.target.checked })}
-                  className="relative h-5 w-9 rounded-full shadow-sm bg-radar-secondary/30 checked:bg-radar-secondary transition-colors duration-200 appearance-none before:absolute before:h-4 before:w-4 before:top-0.5 before:left-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-200 checked:before:translate-x-4"
-                />
-              </label>
+              <Toggle label="Ally Names"   checked={!!settings.showAllNames}          onToggle={() => toggle("showAllNames")} />
+              <Toggle label="Enemy Names"  checked={!!settings.showEnemyNames}         onToggle={() => toggle("showEnemyNames")} />
+              <Toggle label="View Cones"   checked={!!settings.showViewCones}          onToggle={() => toggle("showViewCones")} />
+              <Toggle label="💨 Smoke"     checked={!!settings.showSmoke}             onToggle={() => toggle("showSmoke")} />
+              <Toggle label="🔥 Molly"     checked={!!settings.showMolly}             onToggle={() => toggle("showMolly")} />
+              <Toggle label="⚡ Flash"     checked={!!settings.showFlash}             onToggle={() => toggle("showFlash")} />
+              <Toggle label="Map Callouts" checked={!!(settings.showCallouts ?? true)} onToggle={() => toggle("showCallouts")} />
+              <Toggle label="Death Cross"  checked={!!(settings.showDeathCross ?? true)} onToggle={() => toggle("showDeathCross")} />
+              <Toggle label="Bomb Pulse"   checked={!!(settings.bombHighlight ?? true)}  onToggle={() => toggle("bombHighlight")} />
             </div>
 
             {/* Bomb color */}
@@ -158,20 +100,17 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
                     key={c}
                     onClick={() => onSettingsChange({ ...settings, bombColor: c })}
                     style={{
-                      background: c,
-                      width: 22, height: 22,
-                      borderRadius: "50%",
+                      background: c, width: 22, height: 22, borderRadius: "50%",
                       border: settings.bombColor === c ? "2px solid #fff" : "2px solid transparent",
-                      cursor: "pointer",
-                      flexShrink: 0,
+                      cursor: "pointer", flexShrink: 0,
                     }}
                     title={c}
                   />
                 ))}
                 <input
                   type="color"
-                  value={settings.bombColor ?? "#ff4500"}
-                  onChange={(e) => onSettingsChange({ ...settings, bombColor: e.target.value })}
+                  defaultValue={settings.bombColor ?? "#ff4500"}
+                  onInput={e => onSettingsChange({ ...settings, bombColor: e.target.value })}
                   style={{ width: 22, height: 22, padding: 0, border: "none", borderRadius: "50%", cursor: "pointer", background: "none" }}
                   title="Custom color"
                 />
