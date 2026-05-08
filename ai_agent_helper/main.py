@@ -289,16 +289,14 @@ def load_offsets() -> dict:
 
     if CACHE_FILE.exists():
         try:
-            cached    = json.loads(CACHE_FILE.read_text())
-            cache_ts  = cached.get("_ts", 0)
-            cache_age = time.time() - cache_ts
-            # Cache is valid if it's newer than client.dll (we already scanned this build)
-            # AND not older than CACHE_MAX_AGE (so we still refresh cs2-dumper fields eventually)
-            if cache_ts > dll_mtime and cache_age < CACHE_MAX_AGE:
-                log.info("using cached offsets (%.0fs old)", cache_age)
+            cached   = json.loads(CACHE_FILE.read_text())
+            cache_ts = cached.get("_ts", 0)
+            # Cache is valid as long as client.dll hasn't changed since it was written.
+            # No time-based expiry — offsets only go stale when the game updates.
+            if cache_ts > dll_mtime:
+                log.info("using cached offsets (client.dll unchanged)")
                 return cached
-            if cache_ts <= dll_mtime:
-                log.info("client.dll updated since last cache — rescanning...")
+            log.info("client.dll updated since last cache — rescanning...")
         except Exception:
             pass
 
