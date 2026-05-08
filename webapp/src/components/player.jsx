@@ -107,7 +107,7 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
               left: "50%", top: "50%",
               width: `${scaledSize * 1.5}px`,
               height: `${scaledSize * 3}px`,
-              transform: `translate(-50%, 5%) rotate(0deg)`,
+              transform: `translate(-50%, -100%)`,
               clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
             }}
           />
