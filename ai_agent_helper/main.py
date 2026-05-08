@@ -284,22 +284,30 @@ def _parse_fields(raw: dict) -> dict:
 
 
 def load_offsets() -> dict:
+    dll_path  = _find_client_dll()
+    dll_mtime = dll_path.stat().st_mtime if dll_path else 0
+
     if CACHE_FILE.exists():
         try:
-            cached   = json.loads(CACHE_FILE.read_text())
-            cache_age = time.time() - cached.get("_ts", 0)
-            if cache_age < CACHE_MAX_AGE:
+            cached    = json.loads(CACHE_FILE.read_text())
+            cache_ts  = cached.get("_ts", 0)
+            cache_age = time.time() - cache_ts
+            # Cache is valid if it's newer than client.dll (we already scanned this build)
+            # AND not older than CACHE_MAX_AGE (so we still refresh cs2-dumper fields eventually)
+            if cache_ts > dll_mtime and cache_age < CACHE_MAX_AGE:
                 log.info("using cached offsets (%.0fs old)", cache_age)
                 return cached
+            if cache_ts <= dll_mtime:
+                log.info("client.dll updated since last cache — rescanning...")
         except Exception:
             pass
 
     log.info("fetching offsets from cs2-dumper...")
+    result = None
     try:
         raw_off    = _fetch(f"{DUMPER_BASE}/offsets.json")
         raw_client = _fetch(f"{DUMPER_BASE}/client_dll.json")
 
-        # Global offsets — try both flat and nested layouts
         client_globals = (
             raw_off.get("client.dll") or
             raw_off.get("offsets", {}).get("client.dll") or {}
@@ -310,17 +318,21 @@ def load_offsets() -> dict:
             "globals": client_globals,
             "fields":  _parse_fields(raw_client),
         }
-        CACHE_FILE.write_text(json.dumps(result, indent=2))
-        log.info("offsets fetched and cached -> %s", CACHE_FILE.name)
-        return result
-
+        log.info("offsets fetched from cs2-dumper")
     except Exception as exc:
         log.warning("fetch failed: %s", exc)
         if CACHE_FILE.exists():
             log.info("falling back to cached offsets")
-            return json.loads(CACHE_FILE.read_text())
-        log.critical("no cached offsets and fetch failed — cannot continue")
-        sys.exit(1)
+            result = json.loads(CACHE_FILE.read_text())
+        else:
+            log.critical("no cached offsets and fetch failed — cannot continue")
+            sys.exit(1)
+
+    # Always run local scanner to patch any offsets cs2-dumper may have wrong
+    # for the currently installed client.dll build
+    log.info("running local binary scan to verify/patch offsets...")
+    _scan_globals_from_dll(result)   # saves cache internally
+    return result
 
 def _find_client_dll() -> Path | None:
     """Locate client.dll on disk using the same Steam registry search as MapExtractor."""
