@@ -322,6 +322,101 @@ def load_offsets() -> dict:
         log.critical("no cached offsets and fetch failed — cannot continue")
         sys.exit(1)
 
+def _find_client_dll() -> Path | None:
+    """Locate client.dll on disk using the same Steam registry search as MapExtractor."""
+    try:
+        import winreg
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for sub in (r"SOFTWARE\Valve\Steam", r"SOFTWARE\WOW6432Node\Valve\Steam"):
+                try:
+                    key  = winreg.OpenKey(hive, sub)
+                    stem = Path(winreg.QueryValueEx(key, "InstallPath")[0])
+                    dll  = stem / "steamapps/common/Counter-Strike Global Offensive/game/csgo/bin/win64/client.dll"
+                    if dll.exists():
+                        return dll
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    for drive in ("C", "D", "E"):
+        dll = Path(f"{drive}:/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/bin/win64/client.dll")
+        if dll.exists():
+            return dll
+    return None
+
+
+def _scan_globals_from_dll(offsets: dict) -> bool:
+    """
+    Scan client.dll on disk for global offsets using byte signatures.
+    Patches offsets['globals'] in-place and saves the cache.
+    Returns True if at least dwEntityList was found.
+    """
+    dll_path = _find_client_dll()
+    if not dll_path:
+        log.warning("offset scanner: client.dll not found on disk")
+        return False
+
+    log.info("offset scanner: scanning %s ...", dll_path.name)
+    try:
+        data = dll_path.read_bytes()
+    except Exception as exc:
+        log.warning("offset scanner: could not read client.dll: %s", exc)
+        return False
+
+    # Parse PE section table to build raw-offset -> RVA mapping
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    ns = struct.unpack_from("<H", data, pe + 6)[0]
+    os_ = struct.unpack_from("<H", data, pe + 20)[0]
+    so = pe + 24 + os_
+    sections = []
+    for i in range(ns):
+        s = so + i * 40
+        va  = struct.unpack_from("<I", data, s + 12)[0]
+        rs  = struct.unpack_from("<I", data, s + 16)[0]
+        ro  = struct.unpack_from("<I", data, s + 20)[0]
+        vs  = struct.unpack_from("<I", data, s + 8)[0]
+        sections.append((va, ro, min(vs, rs)))
+
+    def raw_to_rva(raw: int) -> int | None:
+        for va, ro, sz in sections:
+            if ro <= raw < ro + sz:
+                return va + (raw - ro)
+        return None
+
+    # sig: (3-byte opcode, context bytes at +7)
+    SIGS = {
+        "dwEntityList":            (b"\x48\x89\x0D", b"\xe9"),
+        "dwGlobalVars":            (b"\x48\x89\x15", b"\x48\x89\x42"),
+        "dwLocalPlayerController": (b"\x48\x8B\x05", b"\x41\x89\xBE"),
+        "dwViewMatrix":            (b"\x48\x8D\x0D", b"\x48\xC1\xE0\x06"),
+    }
+
+    found_any = False
+    for name, (sig, ctx) in SIGS.items():
+        pos = 0
+        while True:
+            idx = data.find(sig, pos)
+            if idx == -1:
+                break
+            rva_end = raw_to_rva(idx + 7)
+            if rva_end is not None and data[idx + 7: idx + 7 + len(ctx)] == ctx:
+                rel32 = struct.unpack_from("<i", data, idx + 3)[0]
+                target_rva = (rva_end + rel32) & 0xFFFFFFFF
+                offsets["globals"][name] = target_rva
+                log.info("offset scanner: %s = 0x%X", name, target_rva)
+                found_any = True
+                break
+            pos = idx + 1
+
+    if found_any:
+        offsets["_ts"] = time.time()
+        try:
+            CACHE_FILE.write_text(json.dumps(offsets, indent=2))
+        except Exception:
+            pass
+
+    return found_any
+
 
 # ── cs2 entity reading ────────────────────────────────────────────────────────
 ENT_ENTRY_MASK   = 0x7FFF
@@ -1067,6 +1162,7 @@ async def _run_async():
         _last_map = None
 
         _setup_failures = 0
+        _did_local_scan  = False
 
         while True:
             # ── ensure CS2 is open ────────────────────────────────────────────
@@ -1102,6 +1198,13 @@ async def _run_async():
                 ok = await loop.run_in_executor(None, r.setup)
                 if not ok:
                     _setup_failures += 1
+                    # After ~5s of null entity-system, scan client.dll for updated offsets
+                    if not _did_local_scan and _setup_failures >= 5:
+                        log.warning("offsets may be stale — scanning client.dll for updated values...")
+                        patched = await loop.run_in_executor(None, lambda: _scan_globals_from_dll(offsets))
+                        _did_local_scan = True
+                        if patched:
+                            log.info("offset scan complete — retrying with new values")
                     now = time.time()
                     if now - _last_waiting_log >= 5:
                         log.info("waiting for CS2 to load into a game...")
