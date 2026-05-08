@@ -408,6 +408,35 @@ def _scan_globals_from_dll(offsets: dict) -> bool:
                 break
             pos = idx + 1
 
+    # Also scan for field offsets stored in schema metadata (name string → nearby offset)
+    FIELD_NAMES = {
+        ("C_CSPlayerPawn",  "m_angEyeAngles"): 0x10,   # offset is +16 bytes after name ptr in schema entry
+    }
+    image_base_va = struct.unpack_from("<Q", data, pe + 24 + 24)[0]
+    for (cls, field), schema_off in FIELD_NAMES.items():
+        needle = field.encode() + b"\x00"
+        str_raw = data.find(needle)
+        if str_raw == -1:
+            continue
+        # Find section containing the string to get its VA
+        for va, ro, sz in sections:
+            if ro <= str_raw < ro + sz:
+                str_va = image_base_va + va + (str_raw - ro)
+                break
+        else:
+            continue
+        # Search for pointer to this string
+        str_va_bytes = struct.pack("<Q", str_va)
+        ref = data.find(str_va_bytes)
+        if ref == -1:
+            continue
+        # Read field offset at schema_off bytes after the name pointer
+        field_off_raw = struct.unpack_from("<I", data, ref + schema_off)[0]
+        if 0x100 < field_off_raw < 0x10000:
+            offsets["fields"].setdefault(cls, {})[field] = field_off_raw
+            log.info("offset scanner: %s.%s = 0x%X", cls, field, field_off_raw)
+            found_any = True
+
     if found_any:
         offsets["_ts"] = time.time()
         try:

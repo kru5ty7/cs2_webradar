@@ -1,5 +1,5 @@
 {
-  "_ts": 1778253471.4797266,
+  "_ts": 1778260592.4328637,
   "globals": {
     "dwCSGOInput": 36965888,
     "dwEntityList": 38604224,
@@ -2114,7 +2114,7 @@
       "m_EconGloves": 5720,
       "m_GunGameImmunityColor": 7112,
       "m_RetakesMVPBoostExtraUtility": 5712,
-      "m_angEyeAngles": 13152,
+      "m_angEyeAngles": 13168,
       "m_angEyeAnglesVelocity": 13360,
       "m_angShootAngleHistory": 7420,
       "m_angStashedShootAngles": 7384,
